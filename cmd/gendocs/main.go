@@ -59,7 +59,9 @@ func run(dir string) error {
 		return fmt.Sprintf("---\ntitle: %q\ndescription: %q\n---\n\n", title, short[base])
 	}
 	// Absolute routes under the site base (/jk/, see docs/astro.config.mjs).
-	link := func(name string) string { return "/jk/reference/" + strings.ToLower(strings.TrimSuffix(name, ".md")) + "/" }
+	link := func(name string) string {
+		return "/jk/reference/" + strings.ToLower(strings.TrimSuffix(name, ".md")) + "/"
+	}
 	if err := doc.GenMarkdownTreeCustom(root, dir, prepend, link); err != nil {
 		return err
 	}
