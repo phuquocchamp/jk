@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 360" width="1280" height="360" role="img" aria-labelledby="t d">
+  <title id="t">jk</title>
+  <desc id="d">jk: Jenkins from the shell and from agents. An agent-first Jenkins CLI and MCP server in one Go binary.</desc>
+  <!-- Original artwork for jk. Palette nods to Jenkins; no Jenkins logo artwork is used. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2c4859"/>
+      <stop offset="1" stop-color="#16262f"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0 H0 V32" fill="none" stroke="#3b5c70" stroke-width="1"/>
+    </pattern>
+    <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#16262f" stop-opacity="0.85"/>
+      <stop offset="0.55" stop-color="#16262f" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#16262f" stop-opacity="0.6"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="360" rx="24" fill="url(#bg)"/>
+  <rect width="1280" height="360" rx="24" fill="url(#grid)" opacity="0.35"/>
+  <rect width="1280" height="360" rx="24" fill="url(#fade)"/>
+  <rect x="1" y="1" width="1278" height="358" rx="23" fill="none" stroke="#3b5c70" stroke-width="2"/>
+  <rect x="0" y="352" width="1280" height="8" fill="#d33833"/>
+
+  <!-- icon -->
+  <g transform="translate(72 92)">
+    <rect width="128" height="128" rx="28" fill="#335061" stroke="#49728b" stroke-width="3"/>
+    <g transform="translate(0 8)">
+    <g stroke="#231f20" stroke-width="3.5" stroke-linejoin="round">
+      <path d="M60 34 L30 20 Q24 34 30 48 Z" fill="#d33833"/>
+      <path d="M68 34 L98 20 Q104 34 98 48 Z" fill="#d33833"/>
+      <rect x="56" y="26" width="16" height="16" rx="4" fill="#ef3d3a"/>
+    </g>
+    <path d="M34 26 Q31 34 34 42" fill="none" stroke="#ef3d3a" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
+    <path d="M94 26 Q97 34 94 42" fill="none" stroke="#ef3d3a" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
+    </g>
+    <path d="M24 76 L40 88 L24 100" fill="none" stroke="#81b0c4" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="48" y="104" fill="#f7e4cd" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="44" font-weight="700" letter-spacing="-1">jk</text>
+  </g>
+
+  <!-- headline -->
+  <g font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+    <text x="232" y="150" fill="#f7e4cd" font-size="54" font-weight="700" letter-spacing="-1">Your Jenkins butler,</text>
+    <text x="234" y="194" fill="#c3d6e0" font-size="23">for the shell and for agents. A CLI and an MCP server</text>
+    <text x="234" y="224" fill="#c3d6e0" font-size="23">in one Go binary. Reads by default, acts within a policy.</text>
+  </g>
+
+  <!-- chips -->
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="15" font-weight="600">
+    <rect x="234" y="250" width="92" height="30" rx="15" fill="#1d3442" stroke="#49728b"/>
+    <text x="280" y="270" fill="#a9cfde" text-anchor="middle">JSON out</text>
+    <rect x="336" y="250" width="104" height="30" rx="15" fill="#1d3442" stroke="#49728b"/>
+    <text x="388" y="270" fill="#a9cfde" text-anchor="middle">12 tools</text>
+    <rect x="450" y="250" width="148" height="30" rx="15" fill="#1d3442" stroke="#49728b"/>
+    <text x="524" y="270" fill="#a9cfde" text-anchor="middle">read by default</text>
+    <rect x="608" y="250" width="132" height="30" rx="15" fill="#1d3442" stroke="#49728b"/>
+    <text x="674" y="270" fill="#a9cfde" text-anchor="middle">stable errors</text>
+  </g>
+
+  <!-- terminal -->
+  <g transform="translate(800 52)">
+    <rect width="420" height="252" rx="14" fill="#101c24" stroke="#3b5c70" stroke-width="2"/>
+    <path d="M0 14 a14 14 0 0 1 14 -14 h392 a14 14 0 0 1 14 14 v20 h-420 z" fill="#1b2d38"/>
+    <circle cx="22" cy="17" r="5.5" fill="#d33833"/>
+    <circle cx="40" cy="17" r="5.5" fill="#e0a43a"/>
+    <circle cx="58" cy="17" r="5.5" fill="#5fb37a"/>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="15">
+      <text x="20" y="66"><tspan fill="#81b0c4">$</tspan><tspan fill="#f7e4cd"> jk build stages api/main lastFailed</tspan></text>
+      <text x="20" y="94" fill="#5fb37a">✓ <tspan fill="#dcd9d8">Checkout</tspan><tspan x="230" fill="#81959f">2s</tspan></text>
+      <text x="20" y="118" fill="#5fb37a">✓ <tspan fill="#dcd9d8">Build</tspan><tspan x="230" fill="#81959f">1m 12s</tspan></text>
+      <text x="20" y="142" fill="#ef3d3a">✗ <tspan fill="#dcd9d8">Test</tspan><tspan x="230" fill="#81959f">38s</tspan></text>
+      <text x="20" y="178"><tspan fill="#81b0c4">$</tspan><tspan fill="#f7e4cd"> jk test failed api/main --json</tspan></text>
+      <text x="20" y="206" fill="#a3b4bd">… "failed":[{"name":"<tspan fill="#e0a43a">TestLogin</tspan>",…</text>
+      <rect x="20" y="222" width="9" height="17" fill="#81b0c4" opacity="0.85"/>
+    </g>
+  </g>
+</svg>
