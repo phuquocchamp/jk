@@ -1,0 +1,63 @@
+---
+title: jk
+description: Agent-first Jenkins® CLI and MCP server in one Go binary.
+template: splash
+hero:
+  tagline: An agent-first Jenkins® CLI and MCP server in one Go binary. Data on stdout, stable error codes, and a policy that decides what an agent may do.
+  image:
+    file: ../../assets/icon.svg
+  actions:
+    - text: Get started
+      link: /jk/getting-started/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/phuquocchamp/jk
+      icon: github
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+```sh
+go install github.com/phuquocchamp/jk/cmd/jk@latest
+export JENKINS_URL=https://jenkins.example.com JENKINS_USER=jane
+printf %s "$TOKEN" | jk auth login --with-token
+jk build stages team-a/api/main lastFailed
+```
+
+## Why jk
+
+<CardGrid>
+  <Card title="Built for agents" icon="seti:json">
+    stdout carries only data (JSON when piped). Errors go to stderr as
+    `{"error":{"code","message","hint","retryable"}}` with stable exit codes.
+  </Card>
+  <Card title="CLI and MCP in one binary" icon="puzzle">
+    `jk mcp` serves the same 12 operations as MCP tools over stdio, for Claude
+    Code and any other MCP client.
+  </Card>
+  <Card title="Policy you control" icon="approve-check">
+    Read only by default. A config profile can allow triggers and replays, or
+    stopping builds, scoped by job globs. Flags can only lower it.
+  </Card>
+  <Card title="No Jenkins plugin" icon="rocket">
+    Talks to the REST API with a user API token. Only the usual Pipeline
+    plugins are needed for stages, stage logs and test reports.
+  </Card>
+</CardGrid>
+
+## Where to go next
+
+<CardGrid>
+  <LinkCard title="Getting started" description="Install jk and run a first command." href="/jk/getting-started/" />
+  <LinkCard title="Authentication" description="Store the API token in the OS keyring." href="/jk/authentication/" />
+  <LinkCard title="Configuration" description="Profiles, the config file and env vars." href="/jk/configuration/" />
+  <LinkCard title="Policy" description="Decide what an agent may do." href="/jk/policy/" />
+  <LinkCard title="Tools" description="Every operation, and what jk does not do." href="/jk/tools/" />
+  <LinkCard title="MCP server" description="Connect Claude Code or another MCP client." href="/jk/mcp/" />
+  <LinkCard title="Output and errors" description="Parse output and handle errors." href="/jk/errors/" />
+  <LinkCard title="CLI reference" description="Every command and flag." href="/jk/reference/jk/" />
+</CardGrid>
+
+<small>Jenkins® is a registered trademark of LF Charities Inc. jk is an
+independent project, not affiliated with or endorsed by the Jenkins project.</small>

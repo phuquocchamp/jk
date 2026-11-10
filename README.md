@@ -1,59 +1,55 @@
-# jk
-
-`jk` is an agent-first Jenkins® CLI and MCP server in one Go binary.
-
-- **`jk`** is a CLI whose stdout carries only data (JSON when piped), and
-  whose errors have stable codes and exit codes.
-- **`jk mcp`** serves the same 12 operations as MCP tools over stdio.
-- **A policy** in the config file decides what an agent may do: read only (the
-  default), trigger and replay builds, or stop builds. Flags can only lower it.
-
 <p align="center">
-  <img src="docs/assets/banner.svg" alt="jk: an agent-first Jenkins CLI and MCP server" width="100%">
+  <a href="https://phuquocchamp.github.io/jk/">
+    <img src="docs/src/assets/banner.svg" alt="jk: an agent-first Jenkins CLI and MCP server" width="100%">
+  </a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/phuquocchamp/jk/releases"><img alt="Release" src="https://img.shields.io/github/v/release/phuquocchamp/jk?sort=semver"></a>
-  <a href="https://github.com/phuquocchamp/jk/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/phuquocchamp/jk/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://phuquocchamp.github.io/jk/"><img alt="Docs" src="https://img.shields.io/badge/docs-mkdocs-335061"></a>
-  <a href="go.mod"><img alt="Go version" src="https://img.shields.io/github/go-mod/go-version/phuquocchamp/jk"></a>
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
+  Read and drive Jenkins® from your terminal and from your coding agent.
 </p>
 
 <p align="center">
-  <a href="#install">Install</a> ·
-  <a href="#quick-start">Quick start</a> ·
-  <a href="#tools">Tools</a> ·
-  <a href="#policy">Policy</a> ·
-  <a href="#use-with-claude-code-mcp">MCP</a> ·
-  <a href="https://phuquocchamp.github.io/jk/">Docs</a>
+  <a href="https://github.com/phuquocchamp/jk/releases"><img alt="Release" src="https://img.shields.io/github/v/release/phuquocchamp/jk?sort=semver&style=flat-square&color=335061"></a>
+  <a href="https://github.com/phuquocchamp/jk/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/phuquocchamp/jk/ci.yml?branch=main&label=ci&style=flat-square&color=335061"></a>
+  <a href="https://phuquocchamp.github.io/jk/"><img alt="Docs" src="https://img.shields.io/badge/docs-starlight-335061?style=flat-square"></a>
+  <a href="go.mod"><img alt="Go version" src="https://img.shields.io/github/go-mod/go-version/phuquocchamp/jk?style=flat-square&color=335061"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-335061?style=flat-square"></a>
 </p>
 
-## Install
+---
+
+jk is a Jenkins CLI and MCP server in one Go binary. The CLI prints only data
+on stdout (JSON when piped) and fails with stable error codes. `jk mcp` serves
+the same 12 operations as MCP tools. A policy in your config decides what an
+agent may do: read only (the default), trigger and replay builds, or stop them.
+
+## Installation
 
 ```sh
+# Go
 go install github.com/phuquocchamp/jk/cmd/jk@latest
+
+# Prebuilt binaries (macOS, Linux, Windows; amd64 and arm64)
+# Download from GitHub Releases and verify against checksums.txt.
+
+# From source
+make build                 # writes bin/jk
 ```
 
-Or download a release archive for macOS, Linux or Windows (amd64 and arm64)
-from the [releases page](https://github.com/phuquocchamp/jk/releases), verify
-it against `checksums.txt`, and put `jk` on your `PATH`. Binaries are static
-(`CGO_ENABLED=0`). From source: `make build` writes `bin/jk`.
+Binaries are static (`CGO_ENABLED=0`). Archives are on the
+[releases page](https://github.com/phuquocchamp/jk/releases).
 
-Shell completion: `source <(jk completion zsh)` (or `bash`, `fish`,
-`powershell`).
+Shell completion:
 
-## Quick start
+```sh
+source <(jk completion zsh)   # or bash, fish, powershell
+```
 
-**1. Create an API token** in Jenkins: your user, then **Security**, then
-**API Token**, then **Add new token**.
+## Connect To Jenkins
 
-**2. Connect.** Pick one setup (don't mix them: exported `JENKINS_*` values
-always win over the config file and keyring).
-
-<table>
-<tr><th>Config file + OS keyring (recommended)</th><th>Environment variables (CI, quick try)</th></tr>
-<tr><td>
+Create an API token in Jenkins (your user → **Security** → **API Token** →
+**Add new token**), then describe the server in a profile and store the token
+in the OS keyring:
 
 ```sh
 mkdir -p ~/.config/qtools
@@ -65,31 +61,37 @@ profiles:
 YAML
 chmod 600 ~/.config/qtools/jk.yaml
 
-jk auth login   # paste token at hidden prompt
+jk auth login          # paste the token at a hidden prompt
+jk auth status         # token_source: keyring
 ```
 
-</td><td>
+The config file holds no secret. The token lives in macOS Keychain, Windows
+Credential Manager or the Linux Secret Service, under service `jk` with the
+profile name as account.
+
+In CI, or where there is no keyring, use environment variables instead. An
+exported `JENKINS_*` value always wins over the config file and the keyring:
 
 ```sh
 export JENKINS_URL=https://jenkins.example.com
 export JENKINS_USER=jane
-export JENKINS_API_TOKEN=...   # never commit
+export JENKINS_API_TOKEN=...                       # never commit
+printf %s "$TOKEN" | jk auth login --with-token    # or store it from stdin
 ```
 
-</td></tr>
-</table>
+More: [authentication](https://phuquocchamp.github.io/jk/authentication/),
+[configuration and profiles](https://phuquocchamp.github.io/jk/configuration/).
 
-**3. Check it works**, then start reading builds:
+## Debug A Failed Build
+
+Go from "it's red" to the failing stage, log lines and tests:
 
 ```sh
-jk auth status                                # token_source: keyring | env:JENKINS_API_TOKEN
-
-jk job list team-a                            # jobs in a folder
-jk build get team-a/api/main lastFailed       # what happened
-jk build stages team-a/api/main lastFailed    # which stage failed
-jk log tail team-a/api/main lastFailed --stage Test -n 200
-jk log search team-a/api/main 57 -e '(?i)error' -C 3
-jk test failed team-a/api/main lastFailed
+jk build get    team-a/api/main lastFailed         # what happened
+jk build stages team-a/api/main lastFailed         # which stage failed
+jk log tail     team-a/api/main lastFailed --stage Test -n 200
+jk log search   team-a/api/main 57 -e '(?i)error' -C 3
+jk test failed  team-a/api/main lastFailed
 ```
 
 A `<job>` is a path (`folder/sub/job`), a multibranch branch
@@ -97,9 +99,34 @@ A `<job>` is a path (`folder/sub/job`), a multibranch branch
 Jenkins URL. A `[ref]` is a build number or `last` (default), `lastFailed`,
 `lastSuccessful`, `lastCompleted`.
 
-More: [getting started](https://phuquocchamp.github.io/jk/getting-started/),
-[authentication](https://phuquocchamp.github.io/jk/authentication/),
-[configuration and profiles](https://phuquocchamp.github.io/jk/configuration/).
+## Run Builds
+
+Write and danger operations need a higher policy tier (see [Policy](#policy)):
+
+```sh
+jk build trigger team-a/api/main -p ENV=staging --wait
+jk build replay  team-a/api/main 57 --script-file Jenkinsfile
+jk build stop    team-a/api/main 58 --yes
+jk build trigger team-a/api/main --dry-run         # show the plan, do nothing
+```
+
+## Use From An Agent
+
+Register jk as an MCP server in Claude Code:
+
+```sh
+claude mcp add jk -- jk mcp
+claude mcp add jk -- jk mcp --tier read   # read-only even if the config allows more
+```
+
+`jk mcp` resolves the token the same way the CLI does, so the keyring works
+here too and the token never has to sit in `.mcp.json`. Tools appear as
+`mcp__jk__jenkins_*`. Desktop apps need the absolute path to `jk` as
+`command`. More: [MCP server](https://phuquocchamp.github.io/jk/mcp/).
+
+For agents that run shell commands, a Claude Code skill for the CLI is in
+[`skills/jenkins/`](skills/jenkins/SKILL.md). Copy that folder to
+`~/.claude/skills/jenkins/`.
 
 ## Tools
 
@@ -118,18 +145,12 @@ More: [getting started](https://phuquocchamp.github.io/jk/getting-started/),
 | **Queue** | `queue get <id>` | `jenkins_queue_get` | read |
 
 Global flags: `--json`, `--fields a,b`, `--jq EXPR`, `--profile NAME`,
-`--tier`, `--dry-run`, `-y/--yes`. What each tool returns:
-[Tools](https://phuquocchamp.github.io/jk/tools/). Every flag:
-[CLI reference](https://phuquocchamp.github.io/jk/reference/jk/).
+`--tier`, `--dry-run`, `-y/--yes`.
 
-### Not supported
-
-jk reads builds and runs a small set of build actions. It has **no** command
-for: listing a job's build history, artifacts, approving Pipeline `input`
-steps, cancelling queue items, creating or configuring jobs, agents/nodes,
-credentials, plugins or views, file parameters on trigger, and MCP over HTTP
-(stdio only). Replay sends the main Jenkinsfile only. Details and other limits:
-[Tools → Not supported](https://phuquocchamp.github.io/jk/tools/#not-supported).
+jk has **no** command for build history, artifacts, Pipeline `input`
+approval, cancelling queue items, job/agent/credential/plugin configuration,
+file parameters, or MCP over HTTP (stdio only). Replay sends the main
+Jenkinsfile only. See [Tools → Not supported](https://phuquocchamp.github.io/jk/tools/#not-supported).
 
 ## Policy
 
@@ -147,30 +168,16 @@ profiles:
 
 - `read` (default) allows the 9 read tools; `write` adds trigger and replay;
   `danger` adds stop.
-- `--tier` can only **lower** the configured tier. In MCP, tools above the tier
-  are not registered at all.
-- `build stop` needs `--yes` (MCP: `confirm: true`); without it jk exits 7 with
-  the plan. Write operations accept `--dry-run`.
+- `--tier` can only **lower** the configured tier. In MCP, tools above the
+  tier are not registered at all.
+- `build stop` needs `--yes` (MCP: `confirm: true`); without it jk exits 7
+  with the plan. Write operations accept `--dry-run`.
 - **The tier is not a sandbox.** The real boundary is the Jenkins user's
   permissions. See [Policy](https://phuquocchamp.github.io/jk/policy/).
 
-## Use with Claude Code (MCP)
+## Output And Exit Codes
 
-```sh
-claude mcp add jk -- jk mcp
-claude mcp add jk -- jk mcp --tier read   # read-only even if the config allows more
-```
-
-Keep the token in the keyring or your shell environment, not in `.mcp.json`.
-Tools appear as `mcp__jk__jenkins_*`. Desktop apps need the absolute path to
-`jk` as `command`. More: [MCP server](https://phuquocchamp.github.io/jk/mcp/).
-
-For agents that run shell commands, a Claude Code skill for the CLI is in
-[`skills/jenkins/`](skills/jenkins/SKILL.md). Copy that folder to `~/.claude/skills/jenkins/`.
-
-## Output and exit codes
-
-Stdout is data only; errors go to stderr as
+Stdout is data only. Errors go to stderr as
 `{"error":{"code","message","hint","retryable","details"}}`.
 
 | exit | code |
@@ -187,6 +194,20 @@ Stdout is data only; errors go to stderr as
 Meanings, retry rules, log truncation and spill files:
 [Output and errors](https://phuquocchamp.github.io/jk/errors/).
 
+## Reference
+
+Use `--help` on any command to explore flags and examples:
+
+```sh
+jk build --help
+jk log search --help
+```
+
+- [CLI reference](https://phuquocchamp.github.io/jk/reference/jk/)
+- [Getting started](https://phuquocchamp.github.io/jk/getting-started/)
+- [Tools](https://phuquocchamp.github.io/jk/tools/)
+- [jk docs](https://phuquocchamp.github.io/jk/)
+
 ## Security
 
 - The token is never printed or logged. Requests are logged (at most) as
@@ -194,7 +215,7 @@ Meanings, retry rules, log truncation and spill files:
 - Use a token for a Jenkins user with only the permissions the agent needs.
 - Keep the config file private (`chmod 600`); jk warns otherwise.
 
-## Development
+## Developing
 
 ```sh
 make lint-lite   # gofmt check, go vet, go mod tidy -diff, kit import rule
@@ -203,11 +224,32 @@ make build       # bin/jk
 make docs-serve  # regenerate the CLI reference and preview the docs site
 ```
 
+| Path | Purpose |
+|---|---|
+| `cmd/jk` | Binary entry point |
+| `internal/cli` | Cobra commands |
+| `internal/core` | The 12 operations, shared by CLI and MCP |
+| `internal/client` | Jenkins HTTP client |
+| `internal/mcpserver` | `jk mcp` tool registration |
+| `internal/kit` | Shared building blocks: auth (keyring), config, policy, errors, output |
+| `skills/jenkins` | Claude Code skill for the CLI |
+| `docs` | MkDocs site |
+
 Releasing: [docs/release.md](docs/release.md).
+
+## Contributing
+
+Focused pull requests with a clear problem and tests that match the
+user-facing behaviour are welcome. Run `make lint-lite` and `make test` before
+opening one. PR titles use conventional commits, for example:
+
+```text
+fix(log): keep stage filter when the log is truncated
+```
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+jk is released under the MIT license. See [LICENSE](LICENSE).
 
 <sub>Jenkins® is a registered trademark of LF Charities Inc. jk is an
 independent project, not affiliated with or endorsed by the Jenkins project.</sub>
