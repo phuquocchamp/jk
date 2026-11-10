@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-labelledby="t">
+  <title id="t">jk</title>
+  <!-- Original artwork for jk. Palette nods to Jenkins (butler navy, red, cream); no Jenkins logo artwork is used. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b5c70"/>
+      <stop offset="1" stop-color="#253f50"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <!-- butler's bow tie -->
+  <g transform="translate(0 8)">
+    <g stroke="#231f20" stroke-width="3.5" stroke-linejoin="round">
+    <path d="M60 34 L30 20 Q24 34 30 48 Z" fill="#d33833"/>
+    <path d="M68 34 L98 20 Q104 34 98 48 Z" fill="#d33833"/>
+    <rect x="56" y="26" width="16" height="16" rx="4" fill="#ef3d3a"/>
+  </g>
+  <path d="M34 26 Q31 34 34 42" fill="none" stroke="#ef3d3a" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
+  <path d="M94 26 Q97 34 94 42" fill="none" stroke="#ef3d3a" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
+    </g>
+  <!-- prompt + name -->
+  <path d="M24 76 L40 88 L24 100" fill="none" stroke="#81b0c4" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="48" y="104" fill="#f7e4cd" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="44" font-weight="700" letter-spacing="-1">jk</text>
+</svg>

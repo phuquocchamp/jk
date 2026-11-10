@@ -1,0 +1,11 @@
+/* jk brand: butler navy with a red accent (see src/assets/icon.svg). */
+:root {
+	--sl-color-accent-low: #3a1c1f;
+	--sl-color-accent: #e5484d;
+	--sl-color-accent-high: #ffd1d3;
+}
+:root[data-theme='light'] {
+	--sl-color-accent-low: #ffe1e2;
+	--sl-color-accent: #c62a2f;
+	--sl-color-accent-high: #5c1215;
+}

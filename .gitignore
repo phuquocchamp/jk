@@ -7,4 +7,9 @@ coverage.*
 .DS_Store
 .idea/
 .vscode/
-/site/
+
+
+# docs site (Astro / Starlight)
+docs/node_modules/
+docs/dist/
+docs/.astro/

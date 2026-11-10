@@ -38,22 +38,28 @@ cross:
 tidy:
 	go mod tidy
 
-# Docs: the CLI reference in docs/reference is generated from the cobra tree.
+# Docs: a Starlight (Astro) site in docs/. The CLI reference in REF_DIR is
+# generated from the cobra tree.
+REF_DIR := docs/src/content/docs/reference
+
 docs-gen:
-	go run ./cmd/gendocs docs/reference
+	go run ./cmd/gendocs $(REF_DIR)
 
-# Fails when docs/reference is out of date with the CLI (used by CI).
+# Fails when the generated CLI reference is out of date with the CLI (used by CI).
 docs-check: docs-gen
-	@git diff --exit-code -- docs/reference || { echo "docs/reference is out of date: run 'make docs-gen' and commit"; exit 1; }
-	@if [ -n "$$(git ls-files --others --exclude-standard docs/reference)" ]; then \
-		echo "new files in docs/reference: run 'make docs-gen' and commit"; exit 1; fi
+	@git diff --exit-code -- $(REF_DIR) || { echo "$(REF_DIR) is out of date: run 'make docs-gen' and commit"; exit 1; }
+	@if [ -n "$$(git ls-files --others --exclude-standard $(REF_DIR))" ]; then \
+		echo "new files in $(REF_DIR): run 'make docs-gen' and commit"; exit 1; fi
 
-# Needs: pip install -r docs/requirements.txt
-docs: docs-gen
-	mkdocs build --strict
+# Needs Node.js; installs docs/node_modules on first use.
+docs/node_modules: docs/package-lock.json
+	cd docs && npm ci
 
-docs-serve: docs-gen
-	mkdocs serve
+docs: docs-gen docs/node_modules
+	cd docs && npm run build
+
+docs-serve: docs-gen docs/node_modules
+	cd docs && npm run dev
 
 # Release tooling (needs goreleaser v2: brew install goreleaser).
 release-check:
@@ -63,4 +69,4 @@ snapshot:
 	goreleaser release --snapshot --clean
 
 clean:
-	rm -rf bin dist site
+	rm -rf bin dist docs/dist docs/.astro
