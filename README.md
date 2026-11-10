@@ -1,5 +1,3 @@
-
-
 # jk
 
 `jk` is an agent-first Jenkins® CLI and MCP server in one Go binary.
@@ -22,7 +20,6 @@
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
-
 <p align="center">
   <a href="#install">Install</a> ·
   <a href="#quick-start">Quick start</a> ·
@@ -32,7 +29,6 @@
   <a href="https://phuquocchamp.github.io/jk/">Docs</a>
 </p>
 
-
 ## Install
 
 ```sh
@@ -40,29 +36,69 @@ go install github.com/phuquocchamp/jk/cmd/jk@latest
 ```
 
 Or download a release archive for macOS, Linux or Windows (amd64 and arm64)
-from the [releases page](https://github.com/phuquocchamp/jk/releases) and put
-`jk` on your `PATH`. Binaries are static (`CGO_ENABLED=0`). From source:
-`make build` writes `bin/jk`.
+from the [releases page](https://github.com/phuquocchamp/jk/releases), verify
+it against `checksums.txt`, and put `jk` on your `PATH`. Binaries are static
+(`CGO_ENABLED=0`). From source: `make build` writes `bin/jk`.
+
+Shell completion: `source <(jk completion zsh)` (or `bash`, `fish`,
+`powershell`).
 
 ## Quick start
 
-Create an API token in Jenkins (your user, then **Security**, then **API Token**), then:
+**1. Create an API token** in Jenkins: your user, then **Security**, then
+**API Token**, then **Add new token**.
+
+**2. Connect.** Pick one setup (don't mix them: exported `JENKINS_*` values
+always win over the config file and keyring).
+
+<table>
+<tr><th>Config file + OS keyring (recommended)</th><th>Environment variables (CI, quick try)</th></tr>
+<tr><td>
+
+```sh
+mkdir -p ~/.config/qtools
+cat > ~/.config/qtools/jk.yaml <<'YAML'
+profiles:
+  default:
+    url: https://jenkins.example.com
+    user: jane
+YAML
+chmod 600 ~/.config/qtools/jk.yaml
+
+jk auth login   # paste token at hidden prompt
+```
+
+</td><td>
 
 ```sh
 export JENKINS_URL=https://jenkins.example.com
 export JENKINS_USER=jane
-# export JENKINS_API_TOKEN
-
-# OS keyring;
-jk auth login --with-token    
-
-jk auth status
-
-
+export JENKINS_API_TOKEN=...   # never commit
 ```
 
+</td></tr>
+</table>
 
-More: [authentication](https://phuquocchamp.github.io/jk/authentication/),
+**3. Check it works**, then start reading builds:
+
+```sh
+jk auth status                                # token_source: keyring | env:JENKINS_API_TOKEN
+
+jk job list team-a                            # jobs in a folder
+jk build get team-a/api/main lastFailed       # what happened
+jk build stages team-a/api/main lastFailed    # which stage failed
+jk log tail team-a/api/main lastFailed --stage Test -n 200
+jk log search team-a/api/main 57 -e '(?i)error' -C 3
+jk test failed team-a/api/main lastFailed
+```
+
+A `<job>` is a path (`folder/sub/job`), a multibranch branch
+(`project/branch`, with `/` in branch names written as `%2F`), or a pasted
+Jenkins URL. A `[ref]` is a build number or `last` (default), `lastFailed`,
+`lastSuccessful`, `lastCompleted`.
+
+More: [getting started](https://phuquocchamp.github.io/jk/getting-started/),
+[authentication](https://phuquocchamp.github.io/jk/authentication/),
 [configuration and profiles](https://phuquocchamp.github.io/jk/configuration/).
 
 ## Tools
@@ -130,7 +166,7 @@ Tools appear as `mcp__jk__jenkins_*`. Desktop apps need the absolute path to
 `jk` as `command`. More: [MCP server](https://phuquocchamp.github.io/jk/mcp/).
 
 For agents that run shell commands, a Claude Code skill for the CLI is in
-[`skills/jk/`](skills/jk/SKILL.md). Copy it to `~/.claude/skills/`.
+[`skills/jenkins/`](skills/jenkins/SKILL.md). Copy that folder to `~/.claude/skills/jenkins/`.
 
 ## Output and exit codes
 
@@ -167,8 +203,7 @@ make build       # bin/jk
 make docs-serve  # regenerate the CLI reference and preview the docs site
 ```
 
-Design and package contracts: [docs/design.md](docs/design.md). Releasing:
-[docs/release.md](docs/release.md).
+Releasing: [docs/release.md](docs/release.md).
 
 ## License
 

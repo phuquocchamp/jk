@@ -92,7 +92,6 @@ nav:
       - version: reference/jk_version.md
       - completion: reference/jk_completion.md
   - Project:
-      - Design and contracts: design.md
       - Releasing: release.md
 
 not_in_nav: |

@@ -50,6 +50,6 @@ the absolute path as `command`, for example `"command": "/Users/jane/go/bin/jk"`
 ## Claude Code skill
 
 For agents that run shell commands instead of MCP, there is a skill for the
-CLI in [`skills/jk/`](https://github.com/phuquocchamp/jk/tree/main/skills/jk).
+CLI in [`skills/jenkins/`](https://github.com/phuquocchamp/jk/tree/main/skills/jenkins).
 Copy it to `~/.claude/skills/` or a project's `.claude/skills/`. Release
 archives include it too.

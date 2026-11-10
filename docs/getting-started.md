@@ -104,5 +104,5 @@ source <(jk completion zsh)    # or bash / fish / powershell
 ## Next
 
 - Let an agent use it: [MCP server](mcp.md), or the Claude Code skill in
-  [`skills/jk/`](https://github.com/phuquocchamp/jk/tree/main/skills/jk).
+  [`skills/jenkins/`](https://github.com/phuquocchamp/jk/tree/main/skills/jenkins).
 - Allow builds to be triggered: [Policy](policy.md).

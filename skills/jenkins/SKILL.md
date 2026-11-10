@@ -1,6 +1,6 @@
 ---
-name: jk
-description: Read and drive Jenkins with the jk CLI. Use when the user asks why a Jenkins build or pipeline failed, wants a build log, failing stage or failed tests, wants to list jobs or branches, check a queue item, trigger or replay a build, or stop a running build, or pastes a Jenkins job or build URL.
+name: jenkins
+description: Jenkins — read and drive Jenkins with the jk CLI. Use when the user asks why a Jenkins build or pipeline failed, wants a build log, failing stage or failed tests, wants to list jobs or branches, check a queue item, trigger or replay a build, or stop a running build, or pastes a Jenkins job or build URL.
 allowed-tools: Bash(jk:*)
 ---
 
