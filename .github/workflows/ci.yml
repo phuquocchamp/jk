@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Lint
+        run: make lint-lite
+      - name: Test
+        run: make test
+      - name: Cross-compile
+        run: make cross
+      - name: CLI reference is up to date
+        run: make docs-check

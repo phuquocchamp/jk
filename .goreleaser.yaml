@@ -4,7 +4,7 @@ project_name: jk
 
 before:
   hooks:
-    - go mod tidy
+    - go mod tidy -diff
     - go test -count=1 ./...
 
 builds:
@@ -35,10 +35,38 @@ archives:
 checksum:
   name_template: checksums.txt
 
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
 changelog:
+  use: github
   sort: asc
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Other changes
+      order: 999
   filters:
     exclude:
       - "^docs:"
       - "^test:"
       - "^chore:"
+      - "^ci:"
+
+release:
+  prerelease: auto
+  footer: |
+    ## Install
+
+    ```sh
+    go install github.com/phuquocchamp/jk/cmd/jk@{{ .Tag }}
+    ```
+
+    Or download the archive for your platform below, check it against
+    `checksums.txt`, and put `jk` on your `PATH`.
+
+    Docs: https://phuquocchamp.github.io/jk/
