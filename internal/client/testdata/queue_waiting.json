@@ -1,0 +1,1 @@
+{"_class":"hudson.model.Queue$WaitingItem","blocked":false,"cancelled":false,"id":4242,"task":{"_class":"org.jenkinsci.plugins.workflow.job.WorkflowJob","name":"main","url":"https://jenkins.example.com/job/demo-app/job/main/"},"why":"In the quiet period. Expires in 4.9 sec","executable":null}

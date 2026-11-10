@@ -1,0 +1,1 @@
+{"_class":"hudson.model.Queue$LeftItem","blocked":false,"cancelled":false,"id":4242,"task":{"_class":"org.jenkinsci.plugins.workflow.job.WorkflowJob","name":"main","url":"https://jenkins.example.com/job/demo-app/job/main/"},"why":null,"executable":{"_class":"org.jenkinsci.plugins.workflow.job.WorkflowRun","number":8,"url":"https://jenkins.example.com/job/demo-app/job/main/8/"}}

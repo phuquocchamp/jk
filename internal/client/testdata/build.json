@@ -1,0 +1,80 @@
+{
+    "_class": "org.jenkinsci.plugins.workflow.job.WorkflowRun",
+    "actions": [
+        {
+            "_class": "hudson.model.ParametersAction",
+            "parameters": [
+                {
+                    "_class": "hudson.model.StringParameterValue",
+                    "name": "ENV",
+                    "value": "staging"
+                },
+                {
+                    "_class": "hudson.model.BooleanParameterValue",
+                    "name": "DRY",
+                    "value": true
+                }
+            ]
+        },
+        {
+            "_class": "hudson.model.CauseAction",
+            "causes": [
+                {
+                    "_class": "hudson.model.Cause$UserIdCause",
+                    "shortDescription": "Started by user Jane Doe"
+                }
+            ]
+        },
+        {
+            "_class": "jenkins.metrics.impl.TimeInQueueAction"
+        },
+        {},
+        {},
+        {
+            "_class": "hudson.plugins.git.util.BuildData",
+            "lastBuiltRevision": {
+                "SHA1": "0123456789abcdef0123456789abcdef01234567"
+            }
+        },
+        {},
+        {
+            "_class": "hudson.plugins.git.util.BuildData",
+            "lastBuiltRevision": {
+                "SHA1": "fedcba9876543210fedcba9876543210fedcba98"
+            }
+        },
+        {
+            "_class": "hudson.tasks.junit.TestResultAction"
+        },
+        {},
+        {}
+    ],
+    "building": false,
+    "duration": 125000,
+    "estimatedDuration": 120000,
+    "number": 7,
+    "result": "FAILURE",
+    "timestamp": 1700000000000,
+    "url": "https://jenkins.example.com/job/demo-app/job/feature%252Ffoo/7/",
+    "changeSets": [
+        {
+            "_class": "hudson.plugins.git.GitChangeSetList",
+            "items": [
+                {
+                    "_class": "hudson.plugins.git.GitChangeSet",
+                    "commitId": "aaaabbbbccccddddeeeeffff0000111122223333",
+                    "msg": "Fix the widget",
+                    "author": {
+                        "fullName": "Jane Doe"
+                    }
+                },
+                {
+                    "_class": "hudson.plugins.git.GitChangeSet",
+                    "commitId": "1111222233334444555566667777888899990000",
+                    "msg": "No author",
+                    "author": null
+                }
+            ]
+        }
+    ]
+}
