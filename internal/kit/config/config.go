@@ -51,6 +51,9 @@ type Options struct {
 	App     string   // e.g. "jk" -> jk.yaml
 	URLEnv  []string // e.g. JENKINS_URL (first non-empty wins)
 	UserEnv []string // e.g. JENKINS_USER
+	// RepoProfile returns the profile pinned for the current repository (e.g.
+	// from 'git config jk.profile'), or "". nil means no repository lookup.
+	RepoProfile func() string
 	// Getenv defaults to os.Getenv.
 	Getenv func(string) string
 }
@@ -63,7 +66,11 @@ type Resolved struct {
 	Policy   policy.Policy // Tier defaults to read; MaxLogLines to policy.DefaultMaxLogLines
 	Path     string        // config file path that was consulted
 	FromFile bool          // the profile existed in the file
-	Warnings []string      // copied from File.Warnings
+	// UserSource says where User came from: "env:<VAR>", "file" or "" (unset).
+	UserSource string
+	// ProfileSource says how Name was picked: one of the ProfileFrom* values.
+	ProfileSource string
+	Warnings      []string // copied from File.Warnings
 }
 
 // Path returns the config file path for o.
@@ -130,34 +137,61 @@ func permissionWarning(fh *os.File, path string) string {
 	return ""
 }
 
-// Resolve picks the profile name (empty -> DefaultProfile -> "default"),
-// applies env overrides for URL/User, and builds and validates the policy.
-// A profile named explicitly (argument or default_profile) that is missing
-// from the file is a USAGE error unless env supplies the URL. The implicit
-// "default" may be missing: env-only setups then get the read tier.
+// How Resolve picked the profile name (Resolved.ProfileSource).
+const (
+	ProfileFromFlag    = "flag"            // the name argument (--profile)
+	ProfileFromRepo    = "repo"            // Options.RepoProfile (git config jk.profile)
+	ProfileFromDefault = "default_profile" // default_profile in the file
+	ProfileFromBuiltin = "default"         // the built-in name "default"
+)
+
+// ErrProfileNotFound is wrapped by the USAGE error Resolve returns for an
+// explicitly named profile that is not in the file. Callers that create
+// profiles ('auth login') use errors.Is to tell it from other errors.
+var ErrProfileNotFound = errors.New("profile not found in config")
+
+// Resolve picks the profile name (argument -> Options.RepoProfile ->
+// DefaultProfile -> "default"), applies env overrides for URL/User, and builds
+// and validates the policy. A profile named explicitly (argument, repository
+// or default_profile) that is missing from the file is a USAGE error wrapping
+// ErrProfileNotFound unless env supplies the URL. The implicit "default" may be
+// missing: env-only setups then get the read tier.
 func (f *File) Resolve(name string, o Options) (Resolved, error) {
-	explicit := name != ""
-	if name == "" {
-		name = f.DefaultProfile
-		explicit = name != ""
+	src := ProfileFromFlag
+	if name == "" && o.RepoProfile != nil {
+		name, src = strings.TrimSpace(o.RepoProfile()), ProfileFromRepo
 	}
 	if name == "" {
-		name = "default"
+		name, src = f.DefaultProfile, ProfileFromDefault
+	}
+	explicit := name != ""
+	if name == "" {
+		name, src = "default", ProfileFromBuiltin
 	}
 	prof, ok := f.Profiles[name]
 	r := Resolved{Name: name, URL: prof.URL, User: prof.User, FromFile: ok, Path: f.path,
-		Warnings: append([]string(nil), f.Warnings...)}
+		ProfileSource: src, Warnings: append([]string(nil), f.Warnings...)}
 	getenv := o.getenv()
 	envURL := firstEnv(getenv, o.URLEnv)
 	if envURL != "" {
 		r.URL = envURL
 	}
-	if v := firstEnv(getenv, o.UserEnv); v != "" {
+	if r.User != "" {
+		r.UserSource = "file"
+	}
+	if name, v := firstEnvNamed(getenv, o.UserEnv); v != "" {
 		r.User = v
+		r.UserSource = "env:" + name
 	}
 	if explicit && !ok && envURL == "" {
-		return r, errs.Newf(errs.CodeUsage, "profile %q not found in config", name).
-			WithHint(profileHint(f))
+		e := errs.Newf(errs.CodeUsage, "profile %q not found in config", name)
+		e.Err = ErrProfileNotFound
+		hint := profileHint(f)
+		if src == ProfileFromRepo {
+			hint = "this repository selects it with 'git config jk.profile'; " +
+				"create it with 'jk auth login', or change it with 'git config jk.profile <name>'; " + hint
+		}
+		return r, e.WithHint(hint)
 	}
 	r.URL = strings.TrimRight(strings.TrimSpace(r.URL), "/")
 
@@ -208,10 +242,16 @@ func (o Options) getenv() func(string) string {
 }
 
 func firstEnv(getenv func(string) string, names []string) string {
+	_, v := firstEnvNamed(getenv, names)
+	return v
+}
+
+// firstEnvNamed returns the first non-empty variable among names and its name.
+func firstEnvNamed(getenv func(string) string, names []string) (string, string) {
 	for _, n := range names {
 		if v := getenv(n); v != "" {
-			return v
+			return n, v
 		}
 	}
-	return ""
+	return "", ""
 }

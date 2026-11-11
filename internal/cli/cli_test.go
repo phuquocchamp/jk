@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -121,6 +122,12 @@ type harness struct {
 	stdin  *os.File
 	auth   *auth.Resolver
 	canAsk func() bool
+	// profile is what LoadProfile returns (Name filled from --profile);
+	// verifyErr makes the login check fail; verified counts Verify calls.
+	profile   config.Resolved
+	verifyErr error
+	verified  int
+	lastProf  config.Resolved // the profile Verify was called with
 }
 
 func newHarness(t *testing.T, tier policy.Tier) *harness {
@@ -138,7 +145,8 @@ func newHarness(t *testing.T, tier policy.Tier) *harness {
 	}
 	r := auth.NewResolver("jk", "JENKINS_API_TOKEN")
 	r.Getenv = func(string) string { return "" } // never pick up a real token from the env
-	return &harness{t: t, fb: fb, pol: policy.Policy{Tier: tier}, auth: r}
+	return &harness{t: t, fb: fb, pol: policy.Policy{Tier: tier}, auth: r,
+		profile: config.Resolved{URL: fb.BaseURL(), User: "jane", UserSource: "file"}}
 }
 
 func (h *harness) run(args ...string) (int, string, string) {
@@ -163,7 +171,20 @@ func (h *harness) run(args ...string) (int, string, string) {
 			if p == "" {
 				p = "default"
 			}
-			return config.Resolved{Name: p}, nil
+			r := h.profile
+			r.Name = p
+			return r, nil
+		},
+		Verify: func(ctx context.Context, prof config.Resolved, token string) (core.WhoamiOut, error) {
+			h.verified++
+			h.lastProf = prof
+			if h.verifyErr != nil {
+				return core.WhoamiOut{}, h.verifyErr
+			}
+			return core.NewService(h.fb, policy.NewEngine(policy.Policy{Tier: policy.TierRead})).Whoami(ctx, core.WhoamiIn{})
+		},
+		SaveProfile: func(name string, p config.Profile) (config.AddResult, error) {
+			return config.AddProfile(config.Options{Dir: "qtools", App: "jk"}, name, p, "test header")
 		},
 		Auth:   h.auth,
 		Stdin:  h.stdin,
@@ -436,7 +457,7 @@ func TestAuthLoginStatusLogout(t *testing.T) {
 	if got, err := keyring.Get("jk", "work"); err != nil || got != token {
 		t.Fatalf("keyring %q %v", got, err)
 	}
-	if m := asMap(t, out); m["profile"] != "work" || m["stored"] != true {
+	if m := asMap(t, out); m["profile"] != "work" || m["stored"] != true || m["verified"] != true || m["id"] != "jane" {
 		t.Fatalf("got %v", m)
 	}
 
@@ -461,6 +482,192 @@ func TestAuthLoginStatusLogout(t *testing.T) {
 	}
 	if _, err := keyring.Get("jk", "work"); err != keyring.ErrNotFound {
 		t.Fatalf("token still stored: %v", err)
+	}
+}
+
+func TestAuthLoginVerify(t *testing.T) {
+	const token = "fake-token-0123456789abcdef"
+
+	t.Run("rejected token is not stored", func(t *testing.T) {
+		h := newHarness(t, policy.TierRead)
+		h.verifyErr = errs.FromHTTPStatus(401, "")
+		h.withStdin(token + "\n")
+		code, out, stderr := h.run("auth", "login", "--with-token")
+		if code != 6 || errCode(t, stderr) != "AUTH_REQUIRED" || !strings.Contains(stderr, "nothing was stored") {
+			t.Fatalf("exit %d stderr %q", code, stderr)
+		}
+		if strings.Contains(out+stderr, token) {
+			t.Fatal("token leaked")
+		}
+		if _, err := keyring.Get("jk", "default"); err != keyring.ErrNotFound {
+			t.Fatalf("token stored despite rejection: %v", err)
+		}
+	})
+
+	t.Run("unreachable Jenkins gives a retry hint", func(t *testing.T) {
+		h := newHarness(t, policy.TierRead)
+		h.verifyErr = errs.FromHTTPStatus(503, "")
+		h.withStdin(token + "\n")
+		code, _, stderr := h.run("auth", "login", "--with-token")
+		if code != 1 || !strings.Contains(stderr, "--no-verify") {
+			t.Fatalf("exit %d stderr %q", code, stderr)
+		}
+	})
+
+	t.Run("--no-verify stores without calling Jenkins", func(t *testing.T) {
+		h := newHarness(t, policy.TierRead)
+		h.profile = config.Resolved{} // no url, no user
+		h.withStdin(token + "\n")
+		code, out, stderr := h.run("auth", "login", "--with-token", "--no-verify")
+		if code != 0 || h.verified != 0 {
+			t.Fatalf("exit %d verified %d stderr %q", code, h.verified, stderr)
+		}
+		if m := asMap(t, out); m["stored"] != true || m["verified"] != false {
+			t.Fatalf("got %v", m)
+		}
+	})
+
+	t.Run("missing url fails before reading the token", func(t *testing.T) {
+		h := newHarness(t, policy.TierRead)
+		h.profile = config.Resolved{User: "jane"}
+		h.withStdin(token + "\n")
+		code, _, stderr := h.run("auth", "login", "--with-token")
+		if code != 2 || !strings.Contains(stderr, "JENKINS_URL") || h.verified != 0 {
+			t.Fatalf("exit %d stderr %q", code, stderr)
+		}
+	})
+}
+
+func TestAuthLoginSavesProfile(t *testing.T) {
+	const token = "fake-token-0123456789abcdef"
+	cfgPath := func(t *testing.T) string {
+		p, err := config.Path(config.Options{Dir: "qtools", App: "jk"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
+	t.Run("new profile from flags is written with the read tier", func(t *testing.T) {
+		h := newHarness(t, policy.TierRead)
+		h.profile = config.Resolved{} // nothing configured yet
+		h.withStdin(token + "\n")
+		code, out, stderr := h.run("auth", "login", "--profile", "work",
+			"--url", "https://jenkins.example.com/", "--user", "jane", "--with-token")
+		if code != 0 {
+			t.Fatalf("exit %d: %s", code, stderr)
+		}
+		if h.lastProf.URL != "https://jenkins.example.com" || h.lastProf.User != "jane" {
+			t.Fatalf("verified with %+v", h.lastProf)
+		}
+		m := asMap(t, out)
+		if m["profile_saved"] != true || m["config_created"] != true || m["config_path"] != cfgPath(t) {
+			t.Fatalf("got %v", m)
+		}
+		data, err := os.ReadFile(cfgPath(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), token) {
+			t.Fatal("token written to the config file")
+		}
+		f, _, err := config.Load(config.Options{Dir: "qtools", App: "jk"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := f.Profiles["work"]
+		if got.URL != "https://jenkins.example.com" || got.User != "jane" || got.Policy.Tier != "read" || f.DefaultProfile != "work" {
+			t.Fatalf("saved %+v default %q\n%s", got, f.DefaultProfile, data)
+		}
+		if runtime.GOOS != "windows" {
+			if st, _ := os.Stat(cfgPath(t)); st.Mode().Perm() != 0o600 {
+				t.Fatalf("mode %v", st.Mode().Perm())
+			}
+		}
+	})
+
+	t.Run("rejected token writes no config", func(t *testing.T) {
+		h := newHarness(t, policy.TierRead)
+		h.profile = config.Resolved{}
+		h.verifyErr = errs.FromHTTPStatus(401, "")
+		h.withStdin(token + "\n")
+		if code, _, _ := h.run("auth", "login", "--url", "https://j.example.com", "--user", "jane", "--with-token"); code != 6 {
+			t.Fatalf("exit %d", code)
+		}
+		if _, err := os.Stat(cfgPath(t)); !os.IsNotExist(err) {
+			t.Fatalf("config written: %v", err)
+		}
+	})
+
+	t.Run("--no-verify writes no config", func(t *testing.T) {
+		h := newHarness(t, policy.TierRead)
+		h.profile = config.Resolved{}
+		h.withStdin(token + "\n")
+		code, out, _ := h.run("auth", "login", "--url", "https://j.example.com", "--user", "jane", "--with-token", "--no-verify")
+		if code != 0 || asMap(t, out)["profile_saved"] != false {
+			t.Fatalf("exit %d out %s", code, out)
+		}
+		if _, err := os.Stat(cfgPath(t)); !os.IsNotExist(err) {
+			t.Fatalf("config written: %v", err)
+		}
+	})
+
+	t.Run("profile already in the file is left alone", func(t *testing.T) {
+		h := newHarness(t, policy.TierRead)
+		h.profile.FromFile = true
+		h.withStdin(token + "\n")
+		code, out, _ := h.run("auth", "login", "--with-token")
+		if code != 0 || asMap(t, out)["profile_saved"] != false {
+			t.Fatalf("exit %d out %s", code, out)
+		}
+		if _, err := os.Stat(cfgPath(t)); !os.IsNotExist(err) {
+			t.Fatalf("config written: %v", err)
+		}
+	})
+
+	t.Run("prompts for url and user on a terminal", func(t *testing.T) {
+		h := newHarness(t, policy.TierRead)
+		h.profile = config.Resolved{}
+		h.canAsk = func() bool { return true }
+		// The token prompt needs a real terminal, so the run stops there; the
+		// URL and user prompts before it must have consumed exactly two lines.
+		h.withStdin("https://prompted.example.com\njane\n")
+		code, _, stderr := h.run("auth", "login")
+		if !strings.Contains(stderr, "Jenkins URL") || !strings.Contains(stderr, "Jenkins user") {
+			t.Fatalf("no prompts: exit %d stderr %q", code, stderr)
+		}
+		if code != 2 || !strings.Contains(stderr, "not a terminal") {
+			t.Fatalf("exit %d stderr %q", code, stderr)
+		}
+	})
+
+	t.Run("url without a scheme is a usage error", func(t *testing.T) {
+		h := newHarness(t, policy.TierRead)
+		h.withStdin(token + "\n")
+		code, _, stderr := h.run("auth", "login", "--url", "jenkins.example.com", "--with-token")
+		if code != 2 || !strings.Contains(stderr, "https://") || h.verified != 0 {
+			t.Fatalf("exit %d stderr %q", code, stderr)
+		}
+	})
+}
+
+func TestCredentialMixWarning(t *testing.T) {
+	cases := []struct {
+		token auth.Source
+		user  string
+		warn  bool
+	}{
+		{"env:JENKINS_API_TOKEN", "env:JENKINS_USER", false},
+		{auth.SourceKeyring, "file", false},
+		{"env:JENKINS_API_TOKEN", "file", true},
+		{auth.SourceKeyring, "env:JENKINS_USER", true},
+		{"env:JENKINS_API_TOKEN", "", false},
+		{auth.SourceNone, "file", false},
+	}
+	for _, c := range cases {
+		if got := CredentialMixWarning(c.token, c.user) != ""; got != c.warn {
+			t.Errorf("token %q user %q: warn=%v, want %v", c.token, c.user, got, c.warn)
+		}
 	}
 }
 

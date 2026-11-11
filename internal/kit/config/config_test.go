@@ -110,7 +110,7 @@ func TestResolveFromFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Name != "default" || !r.FromFile || r.URL != "https://jenkins.example.com" || r.User != "jane" {
+	if r.Name != "default" || !r.FromFile || r.URL != "https://jenkins.example.com" || r.User != "jane" || r.UserSource != "file" {
 		t.Fatalf("resolved = %+v", r)
 	}
 	if r.Policy.Tier != policy.TierWrite || r.Policy.MaxLogLines != 500 {
@@ -148,7 +148,7 @@ func TestEnvOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.URL != "https://env1.example.com" || r.User != "john" {
+	if r.URL != "https://env1.example.com" || r.User != "john" || r.UserSource != "env:JENKINS_USER" {
 		t.Fatalf("resolved = %+v", r)
 	}
 	// Env never changes the tier.

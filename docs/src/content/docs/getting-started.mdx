@@ -51,19 +51,24 @@ First create an API token in Jenkins: your user, then **Security**, then
 <TabItem label="Config file + keyring (recommended)">
 
 
-Nothing to export, and the token is encrypted by the OS.
+Nothing to export, and the token is encrypted by the OS. One command does
+the whole setup:
 
 ```sh
-mkdir -p ~/.config/qtools
-cat > ~/.config/qtools/jk.yaml <<'YAML'
-profiles:
-  default:
-    url: https://jenkins.example.com
-    user: jane
-YAML
-chmod 600 ~/.config/qtools/jk.yaml
+jk auth login
+# Jenkins URL (e.g. https://jenkins.example.com): https://jenkins.example.com
+# Jenkins user: jane
+# Jenkins API token for profile default: ********
+```
 
-jk auth login        # paste the token at the hidden prompt
+jk checks the token with Jenkins first. Only when it works does jk store the
+token in the keyring and create `~/.config/qtools/jk.yaml` (mode `0600`) with
+the URL, the user and the **read** policy tier. A wrong token saves nothing.
+
+Without a terminal (scripts), pass everything on the command line:
+
+```sh
+printf %s "$TOKEN" | jk auth login --url https://jenkins.example.com --user jane --with-token
 ```
 
 </TabItem>

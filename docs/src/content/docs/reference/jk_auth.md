@@ -30,7 +30,7 @@ jk auth [flags]
 ### SEE ALSO
 
 * [jk](/jk/reference/jk/)	 - Agent-first Jenkins CLI and MCP server
-* [jk auth login](/jk/reference/jk_auth_login/)	 - Store an API token in the OS keyring for the profile
+* [jk auth login](/jk/reference/jk_auth_login/)	 - Check an API token against Jenkins, store it in the OS keyring and save the profile
 * [jk auth logout](/jk/reference/jk_auth_logout/)	 - Remove the profile's API token from the OS keyring
 * [jk auth status](/jk/reference/jk_auth_status/)	 - Check which Jenkins user the token authenticates as; returns id, full name and base URL.
 

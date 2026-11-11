@@ -175,7 +175,7 @@ func (s *Service) LogSearch(ctx context.Context, in LogSearchIn) (LogSearchOut, 
 	}
 	out := LogSearchOut{
 		Job: path, Number: n, Pattern: in.Pattern,
-		Matches: sc.matches, TotalLines: sc.lineNo,
+		Matches: sc.matches, ScannedLines: sc.lineNo,
 		Truncated: sc.stopped || sc.capped,
 	}
 	if out.Matches == nil {

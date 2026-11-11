@@ -251,13 +251,13 @@ type LogMatch struct {
 }
 
 type LogSearchOut struct {
-	Job        string     `json:"job"`
-	Number     int        `json:"number"`
-	Pattern    string     `json:"pattern"`
-	Matches    []LogMatch `json:"matches"`
-	TotalLines int        `json:"total_lines" jsonschema:"lines scanned"`
-	Truncated  bool       `json:"truncated" jsonschema:"true when max_matches (or the line cap) stopped the scan early"`
-	SpilledTo  string     `json:"spilled_to,omitempty" jsonschema:"set when the matches were too large to inline: local file holding them as grep-style text (matches then carry no context)"`
+	Job          string     `json:"job"`
+	Number       int        `json:"number"`
+	Pattern      string     `json:"pattern"`
+	Matches      []LogMatch `json:"matches"`
+	ScannedLines int        `json:"scanned_lines" jsonschema:"lines read before the scan ended; equals the log length only when truncated is false"`
+	Truncated    bool       `json:"truncated" jsonschema:"true when max_matches (or the line cap) stopped the scan early"`
+	SpilledTo    string     `json:"spilled_to,omitempty" jsonschema:"set when the matches were too large to inline: local file holding them as grep-style text (matches then carry no context)"`
 }
 
 type TestFailedIn struct {

@@ -48,26 +48,27 @@ source <(jk completion zsh)   # or bash, fish, powershell
 ## Connect To Jenkins
 
 Create an API token in Jenkins (your user → **Security** → **API Token** →
-**Add new token**), then describe the server in a profile and store the token
-in the OS keyring:
+**Add new token**), then log in:
 
 ```sh
-mkdir -p ~/.config/qtools
-cat > ~/.config/qtools/jk.yaml <<'YAML'
-profiles:
-  default:
-    url: https://jenkins.example.com
-    user: jane
-YAML
-chmod 600 ~/.config/qtools/jk.yaml
-
-jk auth login          # paste the token at a hidden prompt
+jk auth login          # asks for the URL, the user and the token
 jk auth status         # token_source: keyring
 ```
 
-The config file holds no secret. The token lives in macOS Keychain, Windows
-Credential Manager or the Linux Secret Service, under service `jk` with the
-profile name as account.
+`jk auth login` asks Jenkins who the token belongs to before saving anything,
+so a mistyped token or URL is caught right there. When the check passes, jk:
+
+- stores the token in macOS Keychain, Windows Credential Manager or the Linux
+  Secret Service (service `jk`, account = profile name), and
+- creates `~/.config/qtools/jk.yaml` (mode `0600`) with the URL, the user and
+  policy tier **read**. The file holds no secret, and login never changes a
+  profile that already exists.
+
+In scripts: `printf %s "$TOKEN" | jk auth login --url https://jenkins.example.com --user jane --with-token`.
+
+Working with several controllers? Pin a profile per repository with
+`git config jk.profile legacy`; every jk command (and `jk mcp`) run in that
+repository then uses it.
 
 In CI, or where there is no keyring, use environment variables instead. An
 exported `JENKINS_*` value always wins over the config file and the keyring:
@@ -75,9 +76,12 @@ exported `JENKINS_*` value always wins over the config file and the keyring:
 ```sh
 export JENKINS_URL=https://jenkins.example.com
 export JENKINS_USER=jane
-export JENKINS_API_TOKEN=...                       # never commit
-printf %s "$TOKEN" | jk auth login --with-token    # or store it from stdin
+export JENKINS_API_TOKEN=...   # never commit
 ```
+
+Keep the user and the token in the same place. If the token is exported but
+the user comes from `jk.yaml` (or the other way round), `jk auth status` warns
+that the token may belong to another Jenkins user.
 
 More: [authentication](https://phuquocchamp.github.io/jk/authentication/),
 [configuration and profiles](https://phuquocchamp.github.io/jk/configuration/).
@@ -120,7 +124,9 @@ claude mcp add jk -- jk mcp --tier read   # read-only even if the config allows 
 ```
 
 `jk mcp` resolves the token the same way the CLI does, so the keyring works
-here too and the token never has to sit in `.mcp.json`. Tools appear as
+here too and the token never has to sit in `.mcp.json`. Don't add it with
+`claude mcp add -e JENKINS_API_TOKEN=...`: Claude Code would save it in plain
+text in its config. Tools appear as
 `mcp__jk__jenkins_*`. Desktop apps need the absolute path to `jk` as
 `command`. More: [MCP server](https://phuquocchamp.github.io/jk/mcp/).
 

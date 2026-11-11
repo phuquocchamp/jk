@@ -122,3 +122,32 @@ func TestErrorNeverContainsToken(t *testing.T) {
 		t.Fatal("source leaked token")
 	}
 }
+
+func TestEnvToken(t *testing.T) {
+	r := newTestResolver(map[string]string{"JENKINS_API_TOKEN": " t "})
+	if name, ok := r.EnvToken(); !ok || name != "JENKINS_API_TOKEN" {
+		t.Fatalf("got %q %v", name, ok)
+	}
+	r = newTestResolver(map[string]string{"JENKINS_API_TOKEN": "  "})
+	if _, ok := r.EnvToken(); ok {
+		t.Fatal("blank env var counted as set")
+	}
+}
+
+func TestKeyringUnavailableHint(t *testing.T) {
+	orig := goos
+	t.Cleanup(func() { goos = orig })
+
+	goos = "linux"
+	h := keyringUnavailableHint("JENKINS_API_TOKEN")
+	for _, want := range []string{"gnome-keyring", "gnome-keyring-daemon --start", "JENKINS_API_TOKEN"} {
+		if !strings.Contains(h, want) {
+			t.Fatalf("linux hint %q lacks %q", h, want)
+		}
+	}
+	goos = "darwin"
+	h = keyringUnavailableHint("JENKINS_API_TOKEN")
+	if strings.Contains(h, "gnome") || !strings.Contains(h, "JENKINS_API_TOKEN") {
+		t.Fatalf("darwin hint %q", h)
+	}
+}

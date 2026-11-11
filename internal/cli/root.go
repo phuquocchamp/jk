@@ -23,6 +23,8 @@ type Env struct {
 	Service *core.Service
 	Profile config.Resolved
 	Tier    policy.Tier // effective tier = min(config, --tier)
+	// TokenSource says where the token came from ("env:<VAR>" or "keyring").
+	TokenSource auth.Source
 }
 
 // Deps are injected by main (and by tests).
@@ -36,6 +38,12 @@ type Deps struct {
 	// LoadProfile resolves a profile without needing a token (auth commands).
 	LoadProfile func(profile string) (config.Resolved, error)
 	Auth        *auth.Resolver
+	// Verify checks a token against Jenkins before 'auth login' stores it, by
+	// calling whoami as prof.User with token. nil skips the check.
+	Verify func(ctx context.Context, prof config.Resolved, token string) (core.WhoamiOut, error)
+	// SaveProfile adds a profile to the config file (creating the file if
+	// needed) after 'auth login' verified it. nil never writes the config.
+	SaveProfile func(name string, p config.Profile) (config.AddResult, error)
 	Stdin       *os.File
 	Stdout      io.Writer
 	Stderr      io.Writer

@@ -55,10 +55,41 @@ effective tier are not registered.
 - Durations are `*_ms` (milliseconds); timestamps are RFC3339.
 - Logs: `truncated: true` means lines were cut by `max_log_lines`;
   `spilled_to` is a local file path when the result was over 64 KB.
+- `log tail`: `total_lines` is the length of the (stage) log. A failed stage
+  with `total_lines: 0` has no log of its own.
+- `log search`: `scanned_lines` is how many lines were read before the scan
+  ended. It is the log length only when `truncated` is false.
+- `build stages`: `status` is `SUCCESS`, `FAILED`, `UNSTABLE`, `ABORTED`,
+  `IN_PROGRESS`, `PAUSED_PENDING_INPUT` or `NOT_EXECUTED` (skipped, not failed).
+- `--jq` prints one JSON document per result; wrap in `[...]` to get one array.
 - `test failed`: `has_report: false` means the build has no test report.
 - `build trigger --wait`: `timed_out: true` means the build is still running
   (not an error). An error after queuing carries `details.queue_id`.
 - `build stop` without `--yes`: exit 7, plan in `error.details`.
+
+## Output shapes
+
+Top-level keys of each command's JSON, checked against `internal/core/types.go`
+and `internal/cli/auth.go`. Keys marked `?` are left out when empty.
+
+| command | keys | list items |
+|---|---|---|
+| `auth status` | `profile`, `profile_source?`, `url`, `user?`, `id`, `full_name`, `token_source`, `user_source?`, `tier`, `config_path?`, `warnings?` | – |
+| `job list` | `folder`, `jobs[]`, `total`, `truncated` | `name`, `path`, `kind`, `container`, `color?`, `url` |
+| `job get` | `name`, `path`, `url`, `kind`, `class`, `color?`, `buildable`, `last_build?`, `last_successful_build?`, `last_failed_build?`, `last_completed_build?`, `parameters[]?` | `name`, `type`, `description?`, `default?`, `choices?` |
+| `build get` | `job`, `number`, `result?`, `building`, `duration_ms`, `estimated_duration_ms?`, `timestamp`, `url`, `causes?`, `parameters[]?`, `revision?`, `changes[]?` | parameters: `name`, `value`; changes: `commit_id`, `message`, `author?` |
+| `build stages` | `job`, `number`, `status`, `duration_ms`, `stages[]` | `id`, `name`, `status`, `start_time`, `duration_ms` |
+| `log tail` | `job`, `number`, `stage?`, `text`, `lines`, `total_lines`, `truncated`, `spilled_to?` | – |
+| `log search` | `job`, `number`, `pattern`, `matches[]`, `scanned_lines`, `truncated`, `spilled_to?` | `line`, `text`, `before?`, `after?` |
+| `test failed` | `job`, `number`, `has_report`, `fail_count`, `pass_count`, `skip_count`, `failed[]`, `truncated` | `class_name`, `name`, `status`, `error_details?`, `duration_ms` |
+| `queue get` | `id`, `why?`, `blocked`, `cancelled`, `build_number?`, `build_url?`, `task_name?`, `task_url?` | – |
+| `build trigger` | `job`, `dry_run`, `plan?`, `queue_id?`, `number?`, `result?`, `building`, `url?`, `timed_out` | – |
+| `build replay` | `job`, `from_number`, `dry_run`, `plan?`, `queue_id?` | – |
+| `build stop` | `job`, `number`, `dry_run`, `plan?`, `stopped` | – |
+| any error (stderr) | `error.code`, `error.message`, `error.hint?`, `error.retryable`, `error.details?` | – |
+
+`plan` (dry run, or `error.details` of NEEDS_CONFIRMATION): `op`, `method`,
+`path`, `params?`, `note?`, `number?`.
 
 ## Config and environment
 

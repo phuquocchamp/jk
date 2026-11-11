@@ -5,6 +5,7 @@ package auth
 import (
 	"errors"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/zalando/go-keyring"
@@ -59,7 +60,7 @@ func (r *Resolver) Resolve(profile string) (string, Source, error) {
 	if err != nil && !errors.Is(err, keyring.ErrNotFound) {
 		// Keep the cause unserialized (Err is json:"-"); keyring errors carry no secret.
 		e.Err = err
-		return "", SourceNone, e.WithHint("OS keyring unavailable; set " + r.envList() + " instead")
+		return "", SourceNone, e.WithHint(keyringUnavailableHint(r.envList()))
 	}
 	return "", SourceNone, e.WithHint("run 'auth login --with-token' or set " + r.envList())
 }
@@ -83,7 +84,7 @@ func (r *Resolver) Store(profile, token string) error {
 	}
 	if err := keyring.Set(r.Service, profile, token); err != nil {
 		return errs.Wrap(errs.CodeInternal, err, "store token in keyring").
-			WithHint("set " + r.envList() + " if no OS keyring is available")
+			WithHint(keyringUnavailableHint(r.envList()))
 	}
 	return nil
 }
@@ -94,6 +95,39 @@ func (r *Resolver) Delete(profile string) error {
 		return errs.Wrap(errs.CodeInternal, err, "delete token from keyring")
 	}
 	return nil
+}
+
+// EnvToken reports the first token env var that is set, without its value.
+// 'auth login' uses it to warn that the env var will shadow the keyring.
+func (r *Resolver) EnvToken() (string, bool) {
+	getenv := r.Getenv
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	for _, name := range r.EnvVars {
+		if strings.TrimSpace(getenv(name)) != "" {
+			return name, true
+		}
+	}
+	return "", false
+}
+
+// goos is runtime.GOOS; tests override it to check the per-OS hints.
+var goos = runtime.GOOS
+
+// keyringUnavailableHint says how to fix a broken keyring on this OS, and how
+// to do without one. On Linux the keyring is the Secret Service on D-Bus,
+// which WSL, containers and headless servers usually lack; macOS Keychain and
+// Windows Credential Manager are part of the OS.
+func keyringUnavailableHint(envList string) string {
+	fallback := "or skip the keyring: set " + envList
+	if goos == "linux" {
+		return "OS keyring unavailable (no Secret Service on D-Bus). " +
+			"Debian/Ubuntu/WSL: 'sudo apt install -y gnome-keyring libsecret-1-0'; " +
+			"WSL or a headless session, in each shell: " +
+			"'eval \"$(gnome-keyring-daemon --start --components=secrets)\"'; " + fallback
+	}
+	return "OS keyring unavailable (is the keychain locked?); " + fallback
 }
 
 func (r *Resolver) envList() string {

@@ -3,6 +3,7 @@ package output
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,8 +108,13 @@ func TestRenderJQAfterFields(t *testing.T) {
 
 func TestRenderJQErrors(t *testing.T) {
 	var buf bytes.Buffer
-	if err := Render(&buf, sample(), Opts{JQ: ".jobs[ "}); !errs.Is(err, errs.CodeUsage) {
+	err := Render(&buf, sample(), Opts{JQ: ".jobs[ "})
+	if !errs.Is(err, errs.CodeUsage) {
 		t.Fatalf("parse error: got %v", err)
+	}
+	var e *errs.Error
+	if !errors.As(err, &e) || e.Hint == "" {
+		t.Fatalf("parse error has no hint: %v", err)
 	}
 	// runtime error is reported, not printed as a value
 	buf.Reset()

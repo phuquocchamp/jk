@@ -5,26 +5,34 @@ multibranch branch such as `team-a/api/main`.
 
 ## Debug a failed pipeline
 
+Every command here is read-only, so each one carries `--tier read`.
+
 ```sh
-# 1. Pin the build number. Use it in every later command.
-jk build get JOB lastFailed --json --fields number,result,building,causes,revision,changes
+# 1. Pin the build number. The latest build may be green while an older one failed.
+jk job get JOB --tier read --json --fields last_build,last_failed_build,last_successful_build
+jk build get JOB 57 --tier read --json --fields number,result,building,causes,revision,changes
 
-# 2. Which stage failed?
-jk build stages JOB 57 --json \
-  --jq '.stages[] | select(.status=="FAILED" or .status=="UNSTABLE") | {id,name,status,duration_ms}'
+# 2. Which stages failed? NOT_EXECUTED (skipped) is left out on purpose.
+jk build stages JOB 57 --tier read --json \
+  --jq '[.stages[] | select(.status | IN("FAILED","UNSTABLE","ABORTED")) | {id,name,status,start_time,duration_ms}]'
 
-# 3. Read only that stage (name or id from step 2).
-jk log tail JOB 57 --stage "Integration tests" -n 300 --json --fields text,lines,truncated
+# 3. Read the failed stages in start_time order, by id. Skip any with total_lines: 0
+#    (a parent stage, or one that failed because of an earlier stage).
+jk log tail JOB 57 --stage 479 -n 300 --tier read --json --fields text,lines,total_lines,truncated
 
-# 4. Still unclear? Search the whole console without downloading it.
-jk log search JOB 57 -e '(?i)(error|exception|fatal|BUILD FAILURE)' -C 5 --max-matches 20 --json
-
-# 5. Failed JUnit tests, if a report exists.
-jk test failed JOB 57 --limit 30 --json \
+# 4. Failed JUnit tests, if a report exists.
+jk test failed JOB 57 --limit 30 --tier read --json \
   --jq '{has_report, fail_count, failed: [.failed[] | {class_name, name, error_details}]}'
+
+# 5. Last resort: search the whole console without downloading it.
+jk log search JOB 57 -e 'ERROR|Exception|exit code [1-9]|BUILD FAILURE' -C 5 --max-matches 20 --tier read --json
 ```
 
 Tips:
+- Console-wide searches are noisy: test names that contain "error", agent
+  reconnect messages and tool warnings all match. Stage logs are more reliable.
+- `log search` with `truncated: true` stopped at `--max-matches`; the error may
+  be further down. Its `scanned_lines` is how far it read, not the log length.
 - `log tail` without `--stage` reads the end of the whole console. The end is
   often only post-build cleanup, so prefer `--stage` or `log search`.
 - Line counts are capped by the profile's `max_log_lines` (default 2000).
@@ -41,13 +49,17 @@ Tips:
 jk job get JOB --json --fields last_build,last_successful_build,last_failed_build
 ```
 
-Collect failures per build (adjust the range):
+Collect the failed test names of each build, one `jk` call per build (a shell
+loop falls outside the `Bash(jk:*)` permission), then count the names yourself:
 
 ```sh
-for n in 50 51 52 53 54 55 56 57; do
-  jk test failed JOB "$n" --limit 200 --json --jq '.failed[]? | "\(.class_name).\(.name)"' 2>/dev/null
-done | sort | uniq -c | sort -rn
+jk test failed JOB 50 --limit 200 --tier read --json --jq '{number, failed: [.failed[] | "\(.class_name).\(.name)"]}'
+jk test failed JOB 51 --limit 200 --tier read --json --jq '{number, failed: [.failed[] | "\(.class_name).\(.name)"]}'
+# ... one call per build in the range
 ```
+
+A build without a test report returns `has_report: false` and an empty
+`failed` list, not an error.
 
 A test that fails in some builds but not all of them, with no related change in
 `build get --fields changes`, is a flaky candidate. Check `status`:
@@ -80,7 +92,7 @@ jk build trigger JOB -p ENV=staging -p VERSION=1.4.2 --wait --timeout 20m --json
 ## Multibranch paths
 
 ```sh
-jk job list team-a/api --json --fields name,path,color
+jk job list team-a/api --json --fields name,path,color,total,truncated
 ```
 
 - Use the `path` field from `job list` as-is.

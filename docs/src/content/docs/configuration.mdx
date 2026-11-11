@@ -29,31 +29,24 @@ In short:
 The URL and user go in the config file, and the token goes in the
 keyring. Nothing needs to be exported in your shell.
 
-1. Create `~/.config/qtools/jk.yaml`:
-
-    ```yaml
-    profiles:
-      default:
-        url: https://jenkins.example.com
-        user: jane
-    ```
+1. Log in. jk asks for the URL, the user and the token, checks them with
+   Jenkins, then stores the token in the keyring and writes the profile to
+   `~/.config/qtools/jk.yaml` (created with mode `0600`, policy tier `read`):
 
     ```sh
-    chmod 600 ~/.config/qtools/jk.yaml
+    jk auth login
+    # or, without prompts:
+    # printf %s "$TOKEN" | jk auth login --url https://jenkins.example.com --user jane --with-token
     ```
 
-2. Store the token:
-
-    ```sh
-    jk auth login                 # hidden prompt
-    # or: printf %s "$TOKEN" | jk auth login --with-token
-    ```
-
-3. Check:
+2. Check:
 
     ```sh
     jk auth status    # token_source: keyring
     ```
+
+3. To let agents trigger builds, raise `policy.tier` in the file; see
+   [Policy](/jk/policy/). Login never changes a profile that already exists.
 
 If your shell rc still has `export JENKINS_API_TOKEN=...` or
 `export JENKINS_URL=...` from an earlier setup, remove those lines. Env
@@ -114,6 +107,12 @@ jk auth login --profile legacy    # token for "legacy"
 jk job list --profile legacy
 ```
 
+`jk auth login --profile legacy --url https://old-ci.example.org --user jane.doe`
+adds the `legacy` profile to the file for you when it is not there yet.
+
+To use a profile for one repository without typing `--profile`, pin it
+there; see [Per-repository profile](#per-repository-profile).
+
 </TabItem>
 <TabItem label="Inside a Jenkins build">
 
@@ -138,8 +137,8 @@ To reach a *different* controller from a build, export its URL as
 
 For each run:
 
-1. **Profile:** `--profile`, then `default_profile` in the file, then
-   `default`.
+1. **Profile:** `--profile`, then `git config jk.profile` in the current
+   repository, then `default_profile` in the file, then `default`.
 2. **URL and user:** `JENKINS_URL` / `JENKINS_USER` if set, otherwise the
    profile's `url` / `user`.
 3. **Token:** `JENKINS_API_TOKEN` if set, otherwise the keyring entry for the
@@ -147,8 +146,9 @@ For each run:
 4. **Tier:** the profile's `policy.tier` (default `read`), lowered by
    `--tier` if given. Nothing can raise it.
 
-`jk auth status` shows the result: `profile`, `url`, `user`, `tier`,
-`config_path` and `token_source`. It never shows the token.
+`jk auth status` shows the result: `profile` and `profile_source` (`flag`,
+`repo`, `default_profile` or `default`), `url`, `user` and `user_source`,
+`tier`, `config_path` and `token_source`. It never shows the token.
 
 :::caution[Each value is looked up on its own]
 jk picks the URL, the user and the token separately. If one comes from the
@@ -163,10 +163,34 @@ different accounts or controllers:
 On your own machine, do not export `JENKINS_*`. In CI, set all three.
 :::
 
+## Per-repository profile
+
+When different repositories build on different controllers, pin the profile
+in each repository instead of passing `--profile` every time:
+
+```sh
+cd ~/src/legacy-app
+git config jk.profile legacy      # stored in .git/config, not committed
+jk build get legacy-app/main      # uses "legacy"
+jk auth status                    # profile_source: repo
+```
+
+- `--profile` still wins over the repository setting.
+- The setting is read with `git config --get jk.profile` from the current
+  directory, so it also applies to `jk mcp` when the MCP client starts it in
+  that repository (Claude Code does). The `jk mcp` startup line on stderr
+  shows `profile_source=repo`.
+- A pinned profile that is not in the config file is an error that says so;
+  `jk auth login` in that repository creates it.
+- To remove it: `git config --unset jk.profile`.
+
 ## Config file reference
 
 Location: `$XDG_CONFIG_HOME/qtools/jk.yaml`, or `~/.config/qtools/jk.yaml`
-when `XDG_CONFIG_HOME` is not set. The file is optional.
+when `XDG_CONFIG_HOME` is not set. The file is optional. `jk auth login`
+creates it (mode `0600`, tier `read`) the first time a token checks out, and
+adds new profiles to it later; it never edits an existing profile and keeps
+your comments.
 
 ```yaml
 profiles:
@@ -189,7 +213,7 @@ default_profile: default
 | `profiles.<name>.policy.allow.jobs` | all jobs | job path globs that are allowed |
 | `profiles.<name>.policy.deny.jobs` | none | job path globs that are blocked; deny wins |
 | `profiles.<name>.policy.max_log_lines` | `2000` | cap for `log tail` and total `log search` output |
-| `default_profile` | `default` | profile used when `--profile` is not given |
+| `default_profile` | `default` | profile used when neither `--profile` nor `git config jk.profile` is set |
 
 Rules:
 
@@ -198,17 +222,19 @@ Rules:
 - **Keep it private.** jk warns on stderr if the file is readable by group or
   others; run `chmod 600`. There is no `token` key: tokens never go in this
   file.
-- **Missing profile.** A named or `default_profile` profile that does not exist
-  is a usage error, unless `JENKINS_URL` is set.
+- **Missing profile.** A profile named by `--profile`, `git config jk.profile`
+  or `default_profile` that does not exist is a usage error, unless
+  `JENKINS_URL` is set. `jk auth login` creates it.
 
 ## Common problems
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `token_source` is `env:JENKINS_API_TOKEN` but you ran `jk auth login` | `JENKINS_API_TOKEN` is exported somewhere | Remove the export and open a new shell |
-| `no Jenkins URL configured` | No `url` in the profile and no `JENKINS_URL` | Add `url` to the profile |
+| `no Jenkins URL configured` | No `url` in the profile and no `JENKINS_URL` | Run `jk auth login`, or add `url` to the profile |
+| Wrong profile used in one repository | `git config jk.profile` is set there | `jk auth status` shows `profile_source: repo`; change or unset it |
 | `AUTH_REQUIRED` with a token set | `user` and token belong to different accounts, or the token was revoked | Check `jk auth status`; run `jk auth login` again |
 | jk talks to the wrong controller | `JENKINS_URL` is set (always true inside a Jenkins build) | Unset it, or set it on purpose |
 | `USAGE` error naming a key | Typo in `jk.yaml` | Fix the key; see the table above |
 | Warning about file permissions | `jk.yaml` is readable by others | `chmod 600 ~/.config/qtools/jk.yaml` |
-| Keyring error on Linux or WSL | No Secret Service daemon running | Use `JENKINS_API_TOKEN`, or start a keyring daemon |
+| Keyring error on Linux or WSL | No Secret Service daemon running | Follow the hint (install and start gnome-keyring), or use `JENKINS_API_TOKEN` |

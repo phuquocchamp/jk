@@ -509,7 +509,7 @@ func TestLogSearchContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Matches) != 3 || out.Truncated || out.TotalLines != 9 {
+	if len(out.Matches) != 3 || out.Truncated || out.ScannedLines != 9 {
 		t.Fatalf("got %+v", out)
 	}
 	m := out.Matches
@@ -532,7 +532,7 @@ func TestLogSearchStopsEarly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Matches) != 1 || !out.Truncated || out.TotalLines != 3 || len(out.Matches[0].After) != 2 {
+	if len(out.Matches) != 1 || !out.Truncated || out.ScannedLines != 3 || len(out.Matches[0].After) != 2 {
 		t.Fatalf("got %+v", out)
 	}
 	if cr.read > 128*1024 || !cr.closed {
@@ -552,7 +552,7 @@ func TestLogSearchNoMatchesAndBadPattern(t *testing.T) {
 	fb := &fakeBackend{console: consoleOf("a\nb\n")}
 	s := newSvc(fb, policy.Policy{})
 	out, err := s.LogSearch(context.Background(), LogSearchIn{Job: "app", Ref: "1", Pattern: "zzz"})
-	if err != nil || out.Matches == nil || len(out.Matches) != 0 || out.TotalLines != 2 || out.Truncated {
+	if err != nil || out.Matches == nil || len(out.Matches) != 0 || out.ScannedLines != 2 || out.Truncated {
 		t.Fatalf("got %+v, %v", out, err)
 	}
 	_, err = s.LogSearch(context.Background(), LogSearchIn{Job: "app", Ref: "1", Pattern: "("})

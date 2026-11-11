@@ -54,7 +54,8 @@ func Render(w io.Writer, v any, o Opts) error {
 	if o.JQ != "" {
 		q, err := gojq.Parse(o.JQ)
 		if err != nil {
-			return errs.Wrap(errs.CodeUsage, err, "invalid --jq expression: "+err.Error())
+			return errs.Wrap(errs.CodeUsage, err, "invalid --jq expression: "+err.Error()).
+				WithHint("check the jq syntax and wrap the expression in single quotes, e.g. --jq '[.jobs[] | .name]'")
 		}
 		query = q
 	}

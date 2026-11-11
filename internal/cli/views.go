@@ -59,7 +59,7 @@ func (v searchView) PlainText() string {
 		}
 	}
 	if len(v.Matches) == 0 {
-		fmt.Fprintf(&b, "no matches for %q in %d lines\n", v.Pattern, v.TotalLines)
+		fmt.Fprintf(&b, "no matches for %q in %d lines\n", v.Pattern, v.ScannedLines)
 	} else if v.Truncated {
 		b.WriteString("(stopped early: more matches may exist; raise --max-matches)\n")
 	}

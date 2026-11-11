@@ -9,8 +9,10 @@ Check which Jenkins user the token authenticates as; returns id, full name and b
 
 Check which Jenkins user the token authenticates as; returns id, full name and base URL.
 
-Also shows the profile, effective tier and where the token came from
-(env:&lt;VAR> or keyring). The token itself is never printed.
+Also shows the profile, effective tier, where the token came from
+(env:&lt;VAR> or keyring) and where the user came from (env:&lt;VAR> or file).
+It warns when the two come from different places, since the token may then
+belong to another Jenkins user. The token itself is never printed.
 
 ```
 jk auth status [flags]
