@@ -2,7 +2,7 @@ BINARY  := bin/jk
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: all build test vet fmt fmt-check lint-lite cross tidy clean docs-gen docs-check docs docs-serve release-check snapshot
+.PHONY: all build test vet fmt fmt-check lint-lite cross tidy clean docs-gen docs-check docs docs-serve release-check snapshot release shellcheck
 
 all: lint-lite test build
 
@@ -67,6 +67,14 @@ release-check:
 
 snapshot:
 	goreleaser release --snapshot --clean
+
+# Tag the next release locally (never pushes): make release BUMP=minor [PRE=rc]
+release:
+	@test -n "$(BUMP)" || { echo "usage: make release BUMP=patch|minor|major [PRE=rc]"; exit 2; }
+	scripts/release.sh $(BUMP) $(if $(PRE),--pre $(PRE))
+
+shellcheck:
+	shellcheck scripts/*.sh
 
 clean:
 	rm -rf bin dist docs/dist docs/.astro
