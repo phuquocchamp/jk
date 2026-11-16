@@ -8,6 +8,15 @@ effective [tier](/jk/policy/) are registered.
 ## Claude Code
 
 ```sh
+jk setup mcp --tier read             # local scope (this project, only you)
+jk setup mcp --tier read --scope user  # every project
+```
+
+`jk setup mcp` runs `claude mcp add --scope <scope> jk -- <absolute path to jk> mcp --tier read`.
+`--dry-run` prints the command, and `--client print` prints a JSON entry
+instead. To add it by hand:
+
+```sh
 claude mcp add jk -- jk mcp
 # read-only even if the config allows more:
 claude mcp add jk -- jk mcp --tier read
@@ -74,8 +83,8 @@ The tools show up as `mcp__jk__jenkins_*` (for example
 ## Desktop apps
 
 Claude Desktop, Cursor and similar apps do not read your shell's `PATH`. Use
-the absolute path as `command`, for example `"command": "/Users/jane/go/bin/jk"`
-(`which jk` prints it).
+the absolute path as `command`, for example `"command": "/Users/jane/go/bin/jk"`.
+`jk setup mcp --client print --tier read` prints the whole entry with that path.
 
 ## Startup
 
@@ -94,5 +103,5 @@ the absolute path as `command`, for example `"command": "/Users/jane/go/bin/jk"`
 
 For agents that run shell commands instead of MCP, there is a skill for the
 CLI in [`skills/jenkins/`](https://github.com/phuquocchamp/jk/tree/main/skills/jenkins).
-Copy it to `~/.claude/skills/` or a project's `.claude/skills/`. Release
-archives include it too.
+`jk setup skill` writes it to `~/.claude/skills/jenkins` (`--dir .claude/skills`
+for one project). Release archives include it too.

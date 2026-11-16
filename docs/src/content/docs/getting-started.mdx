@@ -7,6 +7,19 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
 ## Install
 
 <Tabs>
+<TabItem label="Install script">
+
+
+macOS and Linux, amd64 or arm64. Verifies the download against the
+release's `checksums.txt` and installs to `~/.local/bin` (no sudo):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/phuquocchamp/jk/main/install.sh | sh
+# a fixed version or another directory:
+curl -fsSL https://raw.githubusercontent.com/phuquocchamp/jk/main/install.sh | sh -s -- --version v0.1.0 --dir ~/bin
+```
+
+</TabItem>
 <TabItem label="Go">
 
 
@@ -27,6 +40,8 @@ Binaries are static (`CGO_ENABLED=0`).
 ```sh
 sha256sum -c checksums.txt --ignore-missing
 tar -xzf jk_*_linux_amd64.tar.gz jk && sudo mv jk /usr/local/bin/
+# optional: check where it was built
+gh attestation verify jk_*_linux_amd64.tar.gz -R phuquocchamp/jk
 ```
 
 </TabItem>
@@ -100,6 +115,21 @@ jk auth status
 `env:JENKINS_API_TOKEN`); the token itself is never shown. Other setups (MCP,
 several controllers, inside a Jenkins build) and what to do when something is
 off: [Configuration](/jk/configuration/).
+
+## Set up your agent
+
+After `jk auth login`:
+
+```sh
+jk setup skill              # writes the jenkins skill to ~/.claude/skills/jenkins
+jk setup mcp --tier read    # runs: claude mcp add --scope local jk -- /path/to/jk mcp --tier read
+jk setup mcp --client print # JSON entry for Claude Desktop, Cursor and other clients
+```
+
+The skill is bundled in the binary, so this works after `go install` too. A
+skill file you changed is not replaced without `--force`. `jk setup mcp`
+never passes the token to the client; `jk mcp` reads it from the keyring.
+Add `--dry-run` to see what either command would do.
 
 ## First commands
 

@@ -29,7 +29,7 @@ allows, and the [CLI reference](/jk/reference/jk/) for every flag.
 | **Tests** | `test failed <job> [ref] [--limit 50]` | `jenkins_test_failed` | read | failed and regressed JUnit cases |
 | **Queue** | `queue get <id>` | `jenkins_queue_get` | read | why a queue item waits, or its build number |
 
-Commands outside the catalog: `auth login`, `auth logout`, `mcp`, `version`,
+Commands outside the catalog: `auth login`, `auth logout`, `mcp`, `setup` (`setup skill`, `setup mcp`), `version`,
 `completion`.
 
 MCP tools accept `ref` as a string (`"42"`, `"last"`) or an integer (`42`).

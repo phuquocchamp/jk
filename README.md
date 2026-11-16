@@ -26,6 +26,9 @@ agent may do: read only (the default), trigger builds, or replay and stop them.
 ## Installation
 
 ```sh
+# Install script (macOS, Linux): checks the download, installs to ~/.local/bin
+curl -fsSL https://raw.githubusercontent.com/phuquocchamp/jk/main/install.sh | sh
+
 # Go
 go install github.com/phuquocchamp/jk/cmd/jk@latest
 
@@ -122,12 +125,15 @@ jk build trigger team-a/api/main --dry-run         # show the plan, do nothing
 
 ## Use From An Agent
 
-Register jk as an MCP server in Claude Code:
+Register jk as an MCP server and install the skill:
 
 ```sh
-claude mcp add jk -- jk mcp
-claude mcp add jk -- jk mcp --tier read   # read-only even if the config allows more
+jk setup mcp --tier read     # runs: claude mcp add jk -- /path/to/jk mcp --tier read
+jk setup skill               # writes the jenkins skill to ~/.claude/skills/jenkins
 ```
+
+Or by hand: `claude mcp add jk -- jk mcp --tier read`. For Claude Desktop,
+Cursor and others, `jk setup mcp --client print` prints the JSON entry.
 
 Danger tools (`build_replay`, `build_stop`) ask the user through MCP
 elicitation when the client supports it, so the agent cannot approve its own
@@ -141,9 +147,8 @@ text in its config. Tools appear as
 `mcp__jk__jenkins_*`. Desktop apps need the absolute path to `jk` as
 `command`. More: [MCP server](https://phuquocchamp.github.io/jk/mcp/).
 
-For agents that run shell commands, a Claude Code skill for the CLI is in
-[`skills/jenkins/`](skills/jenkins/SKILL.md). Copy that folder to
-`~/.claude/skills/jenkins/`.
+For agents that run shell commands, the Claude Code skill for the CLI is in
+[`skills/jenkins/`](skills/jenkins/SKILL.md); `jk setup skill` installs it.
 
 ## Tools
 
@@ -254,7 +259,7 @@ make docs-serve  # regenerate the CLI reference and preview the docs site
 | `skills/jenkins` | Claude Code skill for the CLI |
 | `docs` | Astro Starlight site |
 
-Releasing: [docs/src/content/docs/release.md](docs/src/content/docs/release.md).
+Releasing: `make release BUMP=minor`, then push the tag; see [docs/src/content/docs/release.md](docs/src/content/docs/release.md).
 
 ## Contributing
 

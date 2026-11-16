@@ -46,6 +46,8 @@ Use this when you need an exact flag name or default. For workflows, see
 | `build replay` | `<job> <ref>` | `--script-file F` (required; `-` = stdin), `--yes` (required to act), `--dry-run` | danger | `jenkins_build_replay` |
 | `build stop` | `<job> <ref>` | `--yes` (required to act), `--dry-run` | danger | `jenkins_build_stop` |
 | `mcp` | none | global `--profile`, `--tier` | – | – |
+| `setup skill` | none | `--dir DIR` (`~/.claude/skills`), `--force`, `--dry-run` | – | – |
+| `setup mcp` | none | `--client claude\|print`, `--scope local\|project\|user`, `--tier`, `--dry-run` | – | – |
 | `version` | none | – | – | – |
 | `completion` | `bash\|zsh\|fish\|powershell` | – | – | – |
 
