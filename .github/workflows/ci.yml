@@ -18,6 +18,8 @@ jobs:
           go-version-file: go.mod
       - name: Lint
         run: make lint-lite
+      - name: Shellcheck
+        run: make shellcheck
       - name: Test
         run: make test
       - name: Cross-compile
