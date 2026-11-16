@@ -1,7 +1,9 @@
 # Plan: release skill, release harness, install and setup commands
 
-Status: **draft, not executed.** Work goes on a fresh branch off `main`
-(`feat/release-setup`), not on `feat/p0-agent-tools`.
+Status: **executed 2026-11-16** on `feat/release-setup`, stacked on
+`feat/agent-build-triage` so the first release includes the triage tools.
+Items 1-6 and 8 are done; item 7 (Homebrew) was skipped as decided. The MCP
+tool count is now 15, not 12.
 
 Reference: gleanify's `.claude/skills/release/SKILL.md`, `scripts/release.mjs`,
 `scripts/check-release-tag.mjs`. jk is simpler: one Go binary, no staging or
