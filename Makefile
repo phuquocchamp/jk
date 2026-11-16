@@ -22,11 +22,11 @@ fmt-check:
 	@out=$$(gofmt -l .); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 
 # Lightweight lint without golangci-lint: formatting, vet, tidy go.mod and the
-# rule that internal/kit must not import Jenkins-specific packages.
+# rule that internal/kit must not import Jenkins-specific packages or the skills.
 lint-lite: fmt-check vet
 	go mod tidy -diff
-	@if go list -deps ./internal/kit/... | grep -E 'jk/internal/(core|client|cli|mcpserver)'; then \
-		echo "internal/kit must not import core, client, cli or mcpserver"; exit 1; fi
+	@if go list -deps ./internal/kit/... | grep -E 'jk/(internal/(core|client|cli|mcpserver)|skills)'; then \
+		echo "internal/kit must not import core, client, cli, mcpserver or skills"; exit 1; fi
 
 cross:
 	CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build ./...

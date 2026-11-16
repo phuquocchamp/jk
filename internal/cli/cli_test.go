@@ -146,6 +146,7 @@ type harness struct {
 	verifyErr error
 	verified  int
 	lastProf  config.Resolved // the profile Verify was called with
+	sys       *System         // what 'jk setup' sees
 }
 
 func newHarness(t *testing.T, tier policy.Tier) *harness {
@@ -209,6 +210,7 @@ func (h *harness) run(args ...string) (int, string, string) {
 		Stdout: &stdout,
 		Stderr: &stderr,
 		CanAsk: h.canAsk,
+		System: h.sys,
 	})
 	root.SetArgs(args)
 	code := clix.Execute(root, g, &stdout, &stderr)

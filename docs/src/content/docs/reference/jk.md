@@ -36,6 +36,7 @@ Errors go to stderr ({"error":{...}} in JSON mode) with stable exit codes:
 * [jk log](/jk/reference/jk_log/)	 - Read and search build logs
 * [jk mcp](/jk/reference/jk_mcp/)	 - Run the MCP server on stdio
 * [jk queue](/jk/reference/jk_queue/)	 - Follow queued builds
+* [jk setup](/jk/reference/jk_setup/)	 - Install the agent skill and register jk as an MCP server
 * [jk test](/jk/reference/jk_test/)	 - Inspect JUnit test results
 * [jk version](/jk/reference/jk_version/)	 - Print the jk version
 
