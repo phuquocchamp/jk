@@ -37,8 +37,8 @@ var cfgOpts = config.Options{
 // configHeader opens a config file that 'jk auth login' creates.
 const configHeader = `jk config, created by 'jk auth login'. Edit it freely.
 The API token is in the OS keyring, not in this file.
-policy.tier: read (default) lets agents only read; write adds trigger and replay;
-danger adds stop. Docs: https://phuquocchamp.github.io/jk/configuration/`
+policy.tier: read (default) lets agents only read; write adds trigger;
+danger adds replay and stop. Docs: https://phuquocchamp.github.io/jk/configuration/`
 
 // gitProfile returns 'git config jk.profile' for the current directory, so a
 // repository can pin the profile for every jk command (and for 'jk mcp' when

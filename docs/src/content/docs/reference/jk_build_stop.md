@@ -40,5 +40,5 @@ jk build stop <job> <ref> [flags]
 
 ### SEE ALSO
 
-* [jk build](/jk/reference/jk_build/)	 - Inspect, trigger, replay and stop builds
+* [jk build](/jk/reference/jk_build/)	 - Inspect, diagnose, trigger, replay and stop builds
 

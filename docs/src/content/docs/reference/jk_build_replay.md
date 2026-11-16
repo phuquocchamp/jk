@@ -1,17 +1,20 @@
 ---
 title: "jk build replay"
-description: "Re-run a pipeline build with a modified Jenkinsfile (main script only); returns queue id if known. Supports dry_run."
+description: "Re-run a pipeline build with a modified Jenkinsfile (main script; loaded scripts unchanged). Runs arbitrary pipeline code: requires confirm=true, otherwise NEEDS_CONFIRMATION with a diff against the original. Supports dry_run."
 ---
 
-Re-run a pipeline build with a modified Jenkinsfile (main script only); returns queue id if known. Supports dry_run.
+Re-run a pipeline build with a modified Jenkinsfile (main script; loaded scripts unchanged). Runs arbitrary pipeline code: requires confirm=true, otherwise NEEDS_CONFIRMATION with a diff against the original. Supports dry_run.
 
 ### Synopsis
 
-Re-run a pipeline build with a modified Jenkinsfile (main script only); returns queue id if known. Supports dry_run.
+Re-run a pipeline build with a modified Jenkinsfile (main script; loaded scripts unchanged). Runs arbitrary pipeline code: requires confirm=true, otherwise NEEDS_CONFIRMATION with a diff against the original. Supports dry_run.
 
 --script-file is the Jenkinsfile to run instead of the original main script;
-use "-" to read it from stdin. Loaded libraries/secondary scripts are not
-replaced. --dry-run prints the plan.
+use "-" to read it from stdin ('jk build script' prints the original). Loaded
+libraries/secondary scripts are not replaced. Replay runs arbitrary pipeline
+code (tier danger): pass --yes to confirm. Without it the command exits 7
+(NEEDS_CONFIRMATION) with the plan and a diff against the original; on an
+interactive terminal it asks first. --dry-run prints the plan.
 
 &lt;job> is a job path like folder/sub/job (multibranch: project/branch, with
 "/" in branch names written as %2F) or a full Jenkins job/build URL.
@@ -42,5 +45,5 @@ jk build replay <job> <ref> --script-file F [flags]
 
 ### SEE ALSO
 
-* [jk build](/jk/reference/jk_build/)	 - Inspect, trigger, replay and stop builds
+* [jk build](/jk/reference/jk_build/)	 - Inspect, diagnose, trigger, replay and stop builds
 

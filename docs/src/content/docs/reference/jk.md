@@ -30,7 +30,7 @@ Errors go to stderr ({"error":{...}} in JSON mode) with stable exit codes:
 ### SEE ALSO
 
 * [jk auth](/jk/reference/jk_auth/)	 - Manage credentials and check who you are
-* [jk build](/jk/reference/jk_build/)	 - Inspect, trigger, replay and stop builds
+* [jk build](/jk/reference/jk_build/)	 - Inspect, diagnose, trigger, replay and stop builds
 * [jk completion](/jk/reference/jk_completion/)	 - Generate the autocompletion script for the specified shell
 * [jk job](/jk/reference/jk_job/)	 - Discover and inspect jobs
 * [jk log](/jk/reference/jk_log/)	 - Read and search build logs

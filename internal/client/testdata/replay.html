@@ -1,0 +1,16 @@
+<!DOCTYPE html><html><head><title>Replay #3</title></head><body>
+<form method="POST" autocomplete="off" name="config" action="run">
+<div class="jenkins-form-item"><div class="jenkins-form-label">Main Script</div>
+<textarea checkDependsOn="" name="_.mainScript" checkMethod="post" rows="7" class="jenkins-input validated  " checkUrl="/job/demo-app/job/main/3/replay/checkScript">
+pipeline {
+  agent any
+  stages {
+    stage(&#039;Test&#039;) { steps { sh &quot;make test &amp;&amp; echo &lt;done&gt;&quot; } }
+  }
+}
+</textarea></div>
+<div class="jenkins-form-item"><div class="jenkins-form-label">Script1</div>
+<textarea name="_.Script1" rows="2" class="jenkins-input">def helper() { 1 }
+</textarea></div>
+<button name="Submit" class="jenkins-button jenkins-button--primary">Run</button>
+</form></body></html>

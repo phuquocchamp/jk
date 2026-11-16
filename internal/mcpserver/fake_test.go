@@ -61,8 +61,26 @@ func (f *fakeBackend) GetStageNodes(context.Context, string, int, string) ([]cor
 	return nil, nil
 }
 
-func (f *fakeBackend) GetNodeLog(context.Context, string, int, string) (core.NodeLog, error) {
-	return core.NodeLog{}, nil
+func (f *fakeBackend) GetStageTree(context.Context, string, int) ([]core.GraphStage, error) {
+	return nil, errs.NotFound("no pipeline graph view")
+}
+func (f *fakeBackend) GetSteps(context.Context, string, int) ([]core.GraphStep, error) {
+	return nil, errs.NotFound("no pipeline graph view")
+}
+func (f *fakeBackend) GetStepError(context.Context, string, int, string) (string, error) {
+	return "", nil
+}
+func (f *fakeBackend) StreamNodeLog(context.Context, string, int, string) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("")), nil
+}
+func (f *fakeBackend) ConsoleSize(context.Context, string, int) (int64, error) {
+	return 0, errs.NotFound("no progressive log")
+}
+func (f *fakeBackend) StreamConsoleFrom(context.Context, string, int, int64) (io.ReadCloser, error) {
+	return nil, errs.NotFound("no progressive log")
+}
+func (f *fakeBackend) GetReplayScript(context.Context, string, int) (core.ReplayScript, error) {
+	return core.ReplayScript{Main: "pipeline {}\n"}, nil
 }
 
 func (f *fakeBackend) StreamConsole(context.Context, string, int) (io.ReadCloser, error) {

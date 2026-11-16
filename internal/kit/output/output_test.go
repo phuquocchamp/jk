@@ -227,3 +227,19 @@ func TestSpillRejectsSharedDir(t *testing.T) {
 		t.Fatalf("followed planted symlink: %s", p)
 	}
 }
+
+func TestSpillPathOnlyResolvesOwnFiles(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	p, err := Spill("x", "a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := SpillPath(SpillURI(p)); !ok || got != p {
+		t.Fatalf("own file: %q %v", got, ok)
+	}
+	for _, uri := range []string{"", AppName + "://spill/", AppName + "://spill/other.txt", AppName + "://spill/../x", "file://" + p} {
+		if _, ok := SpillPath(uri); ok {
+			t.Errorf("%q resolved", uri)
+		}
+	}
+}

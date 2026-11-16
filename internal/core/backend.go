@@ -40,12 +40,34 @@ type Backend interface {
 	// GetStageNodes: GET /job/X/<n>/execution/node/<stageID>/wfapi/describe -> stageFlowNodes.
 	GetStageNodes(ctx context.Context, job string, number int, stageID string) ([]StageNode, error)
 
-	// GetNodeLog: GET /job/X/<n>/execution/node/<nodeID>/wfapi/log (Text HTML-unescaped).
-	GetNodeLog(ctx context.Context, job string, number int, nodeID string) (NodeLog, error)
+	// GetStageTree: GET /job/X/<n>/stages/tree (Pipeline Graph View plugin).
+	// NOT_FOUND when the plugin is not installed or the build is not a Pipeline.
+	GetStageTree(ctx context.Context, job string, number int) ([]GraphStage, error)
+
+	// GetSteps: GET /job/X/<n>/stages/allSteps (Pipeline Graph View plugin).
+	GetSteps(ctx context.Context, job string, number int) ([]GraphStep, error)
+
+	// GetStepError: GET /job/X/<n>/stages/exceptionText?nodeId=<id> ("" when none).
+	GetStepError(ctx context.Context, job string, number int, nodeID string) (string, error)
+
+	// StreamNodeLog: GET /job/X/<n>/execution/node/<id>/log/logText/progressiveText?start=0.
+	// The full plain-text log of one flow node (wfapi/log is capped at ~10KB). Caller must Close.
+	StreamNodeLog(ctx context.Context, job string, number int, nodeID string) (io.ReadCloser, error)
 
 	// StreamConsole: GET /job/X/<n>/consoleText. Caller must Close. The body
 	// is streamed; the request is bound to ctx (no fixed whole-request timeout).
 	StreamConsole(ctx context.Context, job string, number int) (io.ReadCloser, error)
+
+	// ConsoleSize: HEAD /job/X/<n>/logText/progressiveText -> X-Text-Size (raw bytes).
+	ConsoleSize(ctx context.Context, job string, number int) (int64, error)
+
+	// StreamConsoleFrom: GET /job/X/<n>/logText/progressiveText?start=<byte>.
+	// Raw text: it may contain console notes (ESC[8mha:...ESC[0m). Caller must Close.
+	StreamConsoleFrom(ctx context.Context, job string, number int, start int64) (io.ReadCloser, error)
+
+	// GetReplayScript reads the replay form (GET /job/X/<n>/replay/): the main
+	// script and loaded scripts. NOT_FOUND when replay is not available.
+	GetReplayScript(ctx context.Context, job string, number int) (ReplayScript, error)
 
 	// GetTestReport returns counts and only FAILED/REGRESSION cases (untrimmed).
 	// HTTP 404 => TestReport{HasReport: false}, nil error.

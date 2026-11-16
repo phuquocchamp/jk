@@ -3,6 +3,8 @@ package mcpserver
 
 import (
 	"context"
+	"io"
+	"os"
 	"reflect"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/phuquocchamp/jk/internal/core"
 	"github.com/phuquocchamp/jk/internal/kit/mcpx"
+	"github.com/phuquocchamp/jk/internal/kit/output"
 	"github.com/phuquocchamp/jk/internal/kit/policy"
 )
 
@@ -17,13 +20,45 @@ import (
 // Ops above the tier are not registered at all.
 func New(svc *core.Service, tier policy.Tier, version string) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{Name: "jk", Version: version}, nil)
+	// Keep waits below common MCP client request timeouts; a capped wait
+	// returns timed_out with a build_wait call to continue.
+	svc.SetMaxWait(core.DefaultMCPMaxWait)
 	for _, op := range core.Catalog {
 		if op.Tier > tier {
 			continue
 		}
 		register(s, svc, op)
 	}
+	s.AddResourceTemplate(&mcp.ResourceTemplate{
+		Name:        "spill",
+		Title:       "Large tool result",
+		URITemplate: output.AppName + "://spill/{name}",
+		MIMEType:    "text/plain",
+		Description: "Full text of a log, search result or script that was too large to inline; tools return its URI as spilled_uri.",
+	}, readSpill)
 	return s
+}
+
+// maxSpillRead bounds a spill resource read.
+const maxSpillRead = 16 << 20
+
+// readSpill serves a spill file written by this process (see output.SpillPath).
+func readSpill(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
+	uri := req.Params.URI
+	path, ok := output.SpillPath(uri)
+	if !ok {
+		return nil, mcp.ResourceNotFoundError(uri)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, mcp.ResourceNotFoundError(uri)
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, maxSpillRead))
+	if err != nil {
+		return nil, err
+	}
+	return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{URI: uri, MIMEType: "text/plain", Text: string(b)}}}, nil
 }
 
 // Run serves s over stdio until ctx is cancelled or the client disconnects.
@@ -51,6 +86,8 @@ func register(s *mcp.Server, svc *core.Service, op core.Op) {
 		mcpx.AddTool(s, name, desc, tier, svc.JobGet)
 	case core.OpBuildGet:
 		mcpx.AddTool(s, name, desc, tier, svc.BuildGet, refSchema)
+	case core.OpBuildDiag:
+		mcpx.AddTool(s, name, desc, tier, svc.BuildDiagnose, refSchema)
 	case core.OpBuildStages:
 		mcpx.AddTool(s, name, desc, tier, svc.BuildStages, refSchema)
 	case core.OpBuildLog:
@@ -61,6 +98,10 @@ func register(s *mcp.Server, svc *core.Service, op core.Op) {
 		mcpx.AddTool(s, name, desc, tier, svc.TestFailed, refSchema)
 	case core.OpQueueGet:
 		mcpx.AddTool(s, name, desc, tier, svc.QueueGet)
+	case core.OpBuildWait:
+		mcpx.AddTool(s, name, desc, tier, svc.BuildWait, refSchema)
+	case core.OpReplayScript:
+		mcpx.AddTool(s, name, desc, tier, svc.BuildReplayScript, refSchema)
 	case core.OpBuildTrigger:
 		mcpx.AddTool(s, name, desc, tier, svc.BuildTrigger)
 	case core.OpBuildReplay:

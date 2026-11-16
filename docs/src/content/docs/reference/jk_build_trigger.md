@@ -1,16 +1,18 @@
 ---
 title: "jk build trigger"
-description: "Start a build (with parameters if the job has them); returns queue id, and build number/result when waiting. Supports dry_run."
+description: "Start a build; unknown parameter names and invalid choice values are rejected. Returns queue id, and build number/result when waiting (MCP waits are capped; continue with build_wait). Supports dry_run."
 ---
 
-Start a build (with parameters if the job has them); returns queue id, and build number/result when waiting. Supports dry_run.
+Start a build; unknown parameter names and invalid choice values are rejected. Returns queue id, and build number/result when waiting (MCP waits are capped; continue with build_wait). Supports dry_run.
 
 ### Synopsis
 
-Start a build (with parameters if the job has them); returns queue id, and build number/result when waiting. Supports dry_run.
+Start a build; unknown parameter names and invalid choice values are rejected. Returns queue id, and build number/result when waiting (MCP waits are capped; continue with build_wait). Supports dry_run.
 
 Parameters are passed with -p name=value (repeatable). Jobs with parameter
-definitions are triggered through buildWithParameters. --wait polls the queue
+definitions are triggered through buildWithParameters. Names the job does not
+define and values outside a choice parameter's choices are rejected (Jenkins
+would silently ignore or accept them); --allow-unknown sends unknown names anyway. --wait polls the queue
 item and then the build until it finishes or --timeout (seconds or a Go
 duration such as 10m; default 600s) expires. --dry-run prints the plan.
 
@@ -25,6 +27,7 @@ jk build trigger <job> [-p k=v ...] [--wait [--timeout 10m]] [flags]
 ### Options
 
 ```
+      --allow-unknown       send parameters the job does not define
   -h, --help                help for trigger
   -p, --param stringArray   build parameter name=value (repeatable)
       --timeout string      wait timeout: seconds or a duration like 10m (default 600s)
@@ -45,5 +48,5 @@ jk build trigger <job> [-p k=v ...] [--wait [--timeout 10m]] [flags]
 
 ### SEE ALSO
 
-* [jk build](/jk/reference/jk_build/)	 - Inspect, trigger, replay and stop builds
+* [jk build](/jk/reference/jk_build/)	 - Inspect, diagnose, trigger, replay and stop builds
 

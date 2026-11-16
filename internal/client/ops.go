@@ -294,11 +294,12 @@ func (c *Client) GetRun(ctx context.Context, job string, number int) (core.Run, 
 		Status         string `json:"status"`
 		DurationMillis int64  `json:"durationMillis"`
 		Stages         []struct {
-			ID              string `json:"id"`
-			Name            string `json:"name"`
-			Status          string `json:"status"`
-			StartTimeMillis int64  `json:"startTimeMillis"`
-			DurationMillis  int64  `json:"durationMillis"`
+			ID              string    `json:"id"`
+			Name            string    `json:"name"`
+			Status          string    `json:"status"`
+			StartTimeMillis int64     `json:"startTimeMillis"`
+			DurationMillis  int64     `json:"durationMillis"`
+			Error           *wfapiErr `json:"error"`
 		} `json:"stages"`
 	}
 	if err := c.getJSON(ctx, runPath(job, number)+"wfapi/describe", nil, &r); err != nil {
@@ -309,7 +310,7 @@ func (c *Client) GetRun(ctx context.Context, job string, number int) (core.Run, 
 	for _, s := range r.Stages {
 		run.Stages = append(run.Stages, core.Stage{
 			ID: s.ID, Name: s.Name, Status: s.Status,
-			StartTime: millis(s.StartTimeMillis), DurationMs: s.DurationMillis,
+			StartTime: millis(s.StartTimeMillis), DurationMs: s.DurationMillis, Error: s.Error.stageError(),
 		})
 	}
 	return run, nil
@@ -323,9 +324,11 @@ func nodePath(job string, number int, nodeID string) string {
 func (c *Client) GetStageNodes(ctx context.Context, job string, number int, stageID string) ([]core.StageNode, error) {
 	var r struct {
 		StageFlowNodes []struct {
-			ID     string `json:"id"`
-			Name   string `json:"name"`
-			Status string `json:"status"`
+			ID                   string    `json:"id"`
+			Name                 string    `json:"name"`
+			Status               string    `json:"status"`
+			ParameterDescription string    `json:"parameterDescription"`
+			Error                *wfapiErr `json:"error"`
 		} `json:"stageFlowNodes"`
 	}
 	if err := c.getJSON(ctx, nodePath(job, number, stageID)+"wfapi/describe", nil, &r); err != nil {
@@ -333,42 +336,183 @@ func (c *Client) GetStageNodes(ctx context.Context, job string, number int, stag
 	}
 	out := make([]core.StageNode, 0, len(r.StageFlowNodes))
 	for _, n := range r.StageFlowNodes {
-		out = append(out, core.StageNode{ID: n.ID, Name: n.Name, Status: n.Status})
+		out = append(out, core.StageNode{ID: n.ID, Name: n.Name, Status: n.Status,
+			Command: n.ParameterDescription, Error: n.Error.stageError()})
 	}
 	return out, nil
 }
 
-// htmlTagRE matches markup that Jenkins adds to annotated logs (console notes,
-// hyperlinks). Literal '<' in the log itself arrives escaped as &lt;.
-var htmlTagRE = regexp.MustCompile(`</?[a-zA-Z][^>]*>`)
-
-// plainLogText strips tags first and unescapes second, so escaped literal
-// markup in the log survives.
-func plainLogText(s string) string {
-	return html.UnescapeString(htmlTagRE.ReplaceAllString(s, ""))
+// wfapiErr is the "error" object wfapi attaches to failed stages and nodes.
+type wfapiErr struct {
+	Message string `json:"message"`
+	Type    string `json:"type"`
 }
 
-// GetNodeLog: GET /job/X/<n>/execution/node/<nodeID>/wfapi/log (Text HTML-unescaped).
-func (c *Client) GetNodeLog(ctx context.Context, job string, number int, nodeID string) (core.NodeLog, error) {
+func (e *wfapiErr) stageError() *core.StageError {
+	if e == nil || (e.Message == "" && e.Type == "") {
+		return nil
+	}
+	return &core.StageError{Type: e.Type, Message: e.Message}
+}
+
+// pgvNotFoundHint explains a 404 from the Pipeline Graph View endpoints.
+const pgvNotFoundHint = "the Pipeline Graph View plugin is not installed, or the build is not a Pipeline"
+
+// graphStage is one node of {run}/stages/tree.
+type graphStage struct {
+	ID                  string       `json:"id"`
+	Name                string       `json:"name"`
+	Type                string       `json:"type"`
+	State               string       `json:"state"`
+	StartTimeMillis     int64        `json:"startTimeMillis"`
+	TotalDurationMillis int64        `json:"totalDurationMillis"`
+	Synthetic           bool         `json:"synthetic"`
+	Placeholder         bool         `json:"placeholder"`
+	Children            []graphStage `json:"children"`
+}
+
+func (g graphStage) core() core.GraphStage {
+	out := core.GraphStage{ID: g.ID, Name: g.Name, Type: g.Type, State: g.State,
+		StartTime: millis(g.StartTimeMillis), DurationMs: g.TotalDurationMillis}
+	for _, ch := range g.Children {
+		if ch.Placeholder {
+			continue
+		}
+		out.Children = append(out.Children, ch.core())
+	}
+	return out
+}
+
+// GetStageTree: GET /job/X/<n>/stages/tree (Pipeline Graph View).
+func (c *Client) GetStageTree(ctx context.Context, job string, number int) ([]core.GraphStage, error) {
 	var r struct {
-		NodeID     string `json:"nodeId"`
-		NodeStatus string `json:"nodeStatus"`
-		Length     int64  `json:"length"`
-		HasMore    bool   `json:"hasMore"`
-		Text       string `json:"text"`
-		ConsoleURL string `json:"consoleUrl"`
+		Data *struct {
+			Stages []graphStage `json:"stages"`
+		} `json:"data"`
 	}
-	if err := c.getJSON(ctx, nodePath(job, number, nodeID)+"wfapi/log", nil, &r); err != nil {
-		return core.NodeLog{}, err
+	if err := c.getJSON(ctx, runPath(job, number)+"stages/tree", nil, &r); err != nil {
+		return nil, withHint(err, errs.CodeNotFound, pgvNotFoundHint)
 	}
-	return core.NodeLog{
-		NodeID:     r.NodeID,
-		Status:     r.NodeStatus,
-		Length:     r.Length,
-		HasMore:    r.HasMore,
-		Text:       plainLogText(r.Text),
-		ConsoleURL: r.ConsoleURL,
-	}, nil
+	if r.Data == nil {
+		return nil, errs.New(errs.CodeNotFound, "stages/tree returned no data").WithHint(pgvNotFoundHint)
+	}
+	out := make([]core.GraphStage, 0, len(r.Data.Stages))
+	for _, g := range r.Data.Stages {
+		if g.Placeholder {
+			continue
+		}
+		out = append(out, g.core())
+	}
+	return out, nil
+}
+
+// GetSteps: GET /job/X/<n>/stages/allSteps (Pipeline Graph View).
+func (c *Client) GetSteps(ctx context.Context, job string, number int) ([]core.GraphStep, error) {
+	var r struct {
+		Data *struct {
+			Steps []struct {
+				ID                  string `json:"id"`
+				Name                string `json:"name"`
+				Title               string `json:"title"`
+				StageID             string `json:"stageId"`
+				State               string `json:"state"`
+				TotalDurationMillis int64  `json:"totalDurationMillis"`
+			} `json:"steps"`
+		} `json:"data"`
+	}
+	if err := c.getJSON(ctx, runPath(job, number)+"stages/allSteps", nil, &r); err != nil {
+		return nil, withHint(err, errs.CodeNotFound, pgvNotFoundHint)
+	}
+	if r.Data == nil {
+		return nil, errs.New(errs.CodeNotFound, "stages/allSteps returned no data").WithHint(pgvNotFoundHint)
+	}
+	out := make([]core.GraphStep, 0, len(r.Data.Steps))
+	for _, st := range r.Data.Steps {
+		name := st.Name
+		if name == "" {
+			name = st.Title
+		}
+		out = append(out, core.GraphStep{ID: st.ID, Name: name, StageID: st.StageID, State: st.State, DurationMs: st.TotalDurationMillis})
+	}
+	return out, nil
+}
+
+// GetStepError: GET /job/X/<n>/stages/exceptionText?nodeId=<id> (plain text).
+func (c *Client) GetStepError(ctx context.Context, job string, number int, nodeID string) (string, error) {
+	b, err := c.getText(ctx, runPath(job, number)+"stages/exceptionText", url.Values{"nodeId": {nodeID}}, 64<<10)
+	if err != nil {
+		return "", withHint(err, errs.CodeNotFound, pgvNotFoundHint)
+	}
+	return string(b), nil
+}
+
+// StreamNodeLog: GET /job/X/<n>/execution/node/<id>/log/logText/progressiveText?start=0.
+// Unlike wfapi/log (capped at ~10KB) this returns the node's full plain text.
+func (c *Client) StreamNodeLog(ctx context.Context, job string, number int, nodeID string) (io.ReadCloser, error) {
+	rc, _, err := c.stream(ctx, http.MethodGet, nodePath(job, number, nodeID)+"log/logText/progressiveText", url.Values{"start": {"0"}})
+	if err != nil {
+		return nil, withHint(err, errs.CodeNotFound, "the flow node has no log, or the build/job path does not exist")
+	}
+	return rc, nil
+}
+
+// ConsoleSize: HEAD /job/X/<n>/logText/progressiveText -> X-Text-Size. (A GET
+// with a start beyond the end returns the whole log, so HEAD is used.)
+func (c *Client) ConsoleSize(ctx context.Context, job string, number int) (int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	rc, h, err := c.stream(ctx, http.MethodHead, runPath(job, number)+"logText/progressiveText", url.Values{"start": {"0"}})
+	if err != nil {
+		return 0, refNotFound(err, core.BuildRef(strconv.Itoa(number)))
+	}
+	rc.Close()
+	size, perr := strconv.ParseInt(h.Get("X-Text-Size"), 10, 64)
+	if perr != nil || size < 0 {
+		return 0, errs.New(errs.CodeUpstream, "Jenkins sent no X-Text-Size for the console log")
+	}
+	return size, nil
+}
+
+// StreamConsoleFrom: GET /job/X/<n>/logText/progressiveText?start=<byte>.
+func (c *Client) StreamConsoleFrom(ctx context.Context, job string, number int, start int64) (io.ReadCloser, error) {
+	rc, _, err := c.stream(ctx, http.MethodGet, runPath(job, number)+"logText/progressiveText",
+		url.Values{"start": {strconv.FormatInt(start, 10)}})
+	if err != nil {
+		return nil, refNotFound(err, core.BuildRef(strconv.Itoa(number)))
+	}
+	return rc, nil
+}
+
+// replayTextareaRE matches the script fields of the replay form:
+// <textarea ... name="_.mainScript" ...>TEXT</textarea> (loaded scripts use
+// their own names). The text is HTML-escaped.
+var replayTextareaRE = regexp.MustCompile(`(?s)<textarea\b[^>]*\bname="_\.([^"]+)"[^>]*>(.*?)</textarea>`)
+
+// GetReplayScript reads the replay form: GET /job/X/<n>/replay/ (HTML; there
+// is no JSON API for it).
+func (c *Client) GetReplayScript(ctx context.Context, job string, number int) (core.ReplayScript, error) {
+	b, err := c.getText(ctx, runPath(job, number)+"replay/", nil, 16<<20)
+	if err != nil {
+		return core.ReplayScript{}, withHint(err, errs.CodeNotFound,
+			"replay is not available for this build: it is not a Pipeline, the user lacks the Replay permission, "+
+				"or the Jenkinsfile is not trusted (e.g. pull request builds from forks)")
+	}
+	rs := core.ReplayScript{Loaded: map[string]string{}}
+	found := false
+	for _, m := range replayTextareaRE.FindAllStringSubmatch(string(b), -1) {
+		// Browsers drop one newline right after <textarea>; do the same.
+		text := html.UnescapeString(strings.TrimPrefix(strings.TrimPrefix(m[2], "\r"), "\n"))
+		if m[1] == "mainScript" {
+			rs.Main, found = text, true
+		} else {
+			rs.Loaded[m[1]] = text
+		}
+	}
+	if !found {
+		return core.ReplayScript{}, errs.New(errs.CodeUpstream, "the replay page has no mainScript field").
+			WithHint("check the profile url; a login or proxy page may have been returned")
+	}
+	return rs, nil
 }
 
 // StreamConsole: GET /job/X/<n>/consoleText. The body is returned unread and

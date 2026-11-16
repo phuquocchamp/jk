@@ -85,8 +85,26 @@ func (f *fakeBackend) GetRun(context.Context, string, int) (core.Run, error) {
 func (f *fakeBackend) GetStageNodes(context.Context, string, int, string) ([]core.StageNode, error) {
 	return nil, nil
 }
-func (f *fakeBackend) GetNodeLog(context.Context, string, int, string) (core.NodeLog, error) {
-	return core.NodeLog{}, nil
+func (f *fakeBackend) GetStageTree(context.Context, string, int) ([]core.GraphStage, error) {
+	return nil, errs.NotFound("no pipeline graph view")
+}
+func (f *fakeBackend) GetSteps(context.Context, string, int) ([]core.GraphStep, error) {
+	return nil, errs.NotFound("no pipeline graph view")
+}
+func (f *fakeBackend) GetStepError(context.Context, string, int, string) (string, error) {
+	return "", nil
+}
+func (f *fakeBackend) StreamNodeLog(context.Context, string, int, string) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("")), nil
+}
+func (f *fakeBackend) ConsoleSize(context.Context, string, int) (int64, error) {
+	return 0, errs.NotFound("no progressive log")
+}
+func (f *fakeBackend) StreamConsoleFrom(context.Context, string, int, int64) (io.ReadCloser, error) {
+	return nil, errs.NotFound("no progressive log")
+}
+func (f *fakeBackend) GetReplayScript(context.Context, string, int) (core.ReplayScript, error) {
+	return core.ReplayScript{Main: "pipeline {}\n"}, nil
 }
 func (f *fakeBackend) StreamConsole(context.Context, string, int) (io.ReadCloser, error) {
 	return io.NopCloser(strings.NewReader(f.console)), nil
@@ -396,9 +414,27 @@ func TestTriggerParamsAndTier(t *testing.T) {
 }
 
 func TestReplayFromStdin(t *testing.T) {
+	// Replay runs arbitrary pipeline code: tier danger, and confirmation.
 	h := newHarness(t, policy.TierWrite)
 	h.withStdin("pipeline { agent any }\n")
-	code, out, stderr := h.run("build", "replay", "team-a/api", "42", "--script-file", "-")
+	code, _, stderr := h.run("build", "replay", "team-a/api", "42", "--script-file", "-")
+	if code != 4 || errCode(t, stderr) != "POLICY_DENIED" {
+		t.Fatalf("write tier: exit %d %s", code, stderr)
+	}
+
+	h = newHarness(t, policy.TierDanger)
+	h.withStdin("pipeline { agent any }\n")
+	code, _, stderr = h.run("build", "replay", "team-a/api", "42", "--script-file", "-")
+	if code != 7 || errCode(t, stderr) != "NEEDS_CONFIRMATION" || h.fb.replayed != "" {
+		t.Fatalf("without --yes: exit %d %s", code, stderr)
+	}
+	if !strings.Contains(stderr, `"diff":"--- original #42`) {
+		t.Fatalf("plan has no diff: %s", stderr)
+	}
+
+	h = newHarness(t, policy.TierDanger)
+	h.withStdin("pipeline { agent any }\n")
+	code, out, stderr := h.run("build", "replay", "team-a/api", "42", "--script-file", "-", "--yes")
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}

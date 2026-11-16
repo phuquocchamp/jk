@@ -102,15 +102,119 @@ func (a *app) buildCmd() *cobra.Command {
 		},
 	}
 
-	return group("build", "Inspect, trigger, replay and stop builds",
-		get, stages, a.buildTriggerCmd(), a.buildReplayCmd(), a.buildStopCmd())
+	return group("build", "Inspect, diagnose, trigger, replay and stop builds",
+		get, a.buildDiagnoseCmd(), stages, a.buildScriptCmd(), a.buildWaitCmd(),
+		a.buildTriggerCmd(), a.buildReplayCmd(), a.buildStopCmd())
+}
+
+func (a *app) buildDiagnoseCmd() *cobra.Command {
+	var lines, maxTests int
+	c := &cobra.Command{
+		Use:   "diagnose <job> [ref]",
+		Short: opShort(core.OpBuildDiag),
+		Long: opShort(core.OpBuildDiag) + `
+
+[ref] defaults to lastFailed here. --lines sets how much of the failing step's
+log is included (default 60, capped by policy max_log_lines).
+
+` + jobArgHelp,
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if lines < 0 || maxTests < 0 {
+				return errs.Usage("--lines and --max-tests must not be negative")
+			}
+			env, err := a.open(cmd)
+			if err != nil {
+				return err
+			}
+			out, err := env.Service.BuildDiagnose(cmd.Context(), core.BuildDiagnoseIn{
+				Job: args[0], Ref: core.BuildRef(optArg(args, 1)), LogLines: lines, MaxTests: maxTests,
+			})
+			if err != nil {
+				return err
+			}
+			return a.render(diagnoseView(out))
+		},
+	}
+	c.Flags().IntVarP(&lines, "lines", "n", core.DefaultDiagnoseLogLines, "lines of the failing step's log")
+	c.Flags().IntVar(&maxTests, "max-tests", core.DefaultDiagnoseTests, "max failed test cases")
+	return c
+}
+
+func (a *app) buildScriptCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "script <job> [ref]",
+		Short: opShort(core.OpReplayScript),
+		Long: opShort(core.OpReplayScript) + `
+
+Human output is the script itself, so 'jk build script JOB 42 > Jenkinsfile'
+gives a file to edit and pass to 'jk build replay --script-file'.
+
+` + jobArgHelp,
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			env, err := a.open(cmd)
+			if err != nil {
+				return err
+			}
+			out, err := env.Service.BuildReplayScript(cmd.Context(), core.BuildReplayScriptIn{Job: args[0], Ref: core.BuildRef(optArg(args, 1))})
+			if err != nil {
+				return err
+			}
+			return a.render(scriptView(out))
+		},
+	}
+}
+
+func (a *app) buildWaitCmd() *cobra.Command {
+	var (
+		queueID int64
+		timeout string
+	)
+	c := &cobra.Command{
+		Use:   "wait <job> [ref] [--queue-id N] [--timeout 10m]",
+		Short: opShort(core.OpBuildWait),
+		Long: opShort(core.OpBuildWait) + `
+
+Pass the build number as [ref], or --queue-id with the queue_id that
+'build trigger' printed when the build had not started yet. --timeout takes
+seconds or a Go duration (default 600s). Timing out is not an error: the
+output has timed_out=true and the command to run next.
+
+` + jobArgHelp,
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			secs := 0
+			if cmd.Flags().Changed("timeout") {
+				var err error
+				if secs, err = parseTimeout(timeout); err != nil {
+					return err
+				}
+			}
+			env, err := a.open(cmd)
+			if err != nil {
+				return err
+			}
+			out, err := env.Service.BuildWait(cmd.Context(), core.BuildWaitIn{
+				Job: args[0], Ref: core.BuildRef(optArg(args, 1)), QueueID: queueID, TimeoutSeconds: secs,
+			})
+			if err != nil {
+				return err
+			}
+			return a.render(out)
+		},
+	}
+	c.Flags().Int64Var(&queueID, "queue-id", 0, "queue item id from 'build trigger'")
+	c.Flags().StringVar(&timeout, "timeout", "", "wait timeout: seconds or a duration like 10m (default 600s)")
+	return c
 }
 
 func (a *app) buildTriggerCmd() *cobra.Command {
 	var (
-		params  []string
-		wait    bool
-		timeout string
+		params       []string
+		wait         bool
+		timeout      string
+		allowUnknown bool
 	)
 	c := &cobra.Command{
 		Use:   "trigger <job> [-p k=v ...] [--wait [--timeout 10m]]",
@@ -118,7 +222,9 @@ func (a *app) buildTriggerCmd() *cobra.Command {
 		Long: opShort(core.OpBuildTrigger) + `
 
 Parameters are passed with -p name=value (repeatable). Jobs with parameter
-definitions are triggered through buildWithParameters. --wait polls the queue
+definitions are triggered through buildWithParameters. Names the job does not
+define and values outside a choice parameter's choices are rejected (Jenkins
+would silently ignore or accept them); --allow-unknown sends unknown names anyway. --wait polls the queue
 item and then the build until it finishes or --timeout (seconds or a Go
 duration such as 10m; default 600s) expires. --dry-run prints the plan.
 
@@ -143,7 +249,7 @@ duration such as 10m; default 600s) expires. --dry-run prints the plan.
 				return err
 			}
 			out, err := env.Service.BuildTrigger(cmd.Context(), core.BuildTriggerIn{
-				Job: args[0], Params: pm, Wait: wait, TimeoutSeconds: secs, DryRun: a.g.DryRun,
+				Job: args[0], Params: pm, Wait: wait, TimeoutSeconds: secs, AllowUnknown: allowUnknown, DryRun: a.g.DryRun,
 			})
 			if err != nil {
 				return err
@@ -154,6 +260,7 @@ duration such as 10m; default 600s) expires. --dry-run prints the plan.
 	c.Flags().StringArrayVarP(&params, "param", "p", nil, "build parameter name=value (repeatable)")
 	c.Flags().BoolVar(&wait, "wait", false, "wait for the build to start and finish")
 	c.Flags().StringVar(&timeout, "timeout", "", "wait timeout: seconds or a duration like 10m (default 600s)")
+	c.Flags().BoolVar(&allowUnknown, "allow-unknown", false, "send parameters the job does not define")
 	return c
 }
 
@@ -165,8 +272,11 @@ func (a *app) buildReplayCmd() *cobra.Command {
 		Long: opShort(core.OpBuildReplay) + `
 
 --script-file is the Jenkinsfile to run instead of the original main script;
-use "-" to read it from stdin. Loaded libraries/secondary scripts are not
-replaced. --dry-run prints the plan.
+use "-" to read it from stdin ('jk build script' prints the original). Loaded
+libraries/secondary scripts are not replaced. Replay runs arbitrary pipeline
+code (tier danger): pass --yes to confirm. Without it the command exits 7
+(NEEDS_CONFIRMATION) with the plan and a diff against the original; on an
+interactive terminal it asks first. --dry-run prints the plan.
 
 ` + jobArgHelp,
 		Args: cobra.ExactArgs(2),
@@ -179,9 +289,19 @@ replaced. --dry-run prints the plan.
 			if err != nil {
 				return err
 			}
-			out, err := env.Service.BuildReplay(cmd.Context(), core.BuildReplayIn{
-				Job: args[0], Ref: core.BuildRef(args[1]), Script: script, DryRun: a.g.DryRun,
-			})
+			in := core.BuildReplayIn{Job: args[0], Ref: core.BuildRef(args[1]), Script: script, Confirm: a.g.Yes, DryRun: a.g.DryRun}
+			out, err := env.Service.BuildReplay(cmd.Context(), in)
+			if errs.Is(err, errs.CodeNeedsConfirmation) && a.canAsk() && scriptFile != "-" {
+				n, ok, perr := a.confirmPlan(err, "Replay this build with the new script?")
+				if perr != nil {
+					return perr
+				}
+				if !ok {
+					return err
+				}
+				in.Ref, in.Confirm = core.BuildRef(strconv.Itoa(n)), true
+				out, err = env.Service.BuildReplay(cmd.Context(), in)
+			}
 			if err != nil {
 				return err
 			}
@@ -211,22 +331,14 @@ with the plan in the error details; on an interactive terminal it asks first.
 			in := core.BuildStopIn{Job: args[0], Ref: core.BuildRef(args[1]), Confirm: a.g.Yes, DryRun: a.g.DryRun}
 			out, err := env.Service.BuildStop(cmd.Context(), in)
 			if errs.Is(err, errs.CodeNeedsConfirmation) && a.canAsk() {
-				ok, perr := a.confirm(err, "Stop this build?")
+				n, ok, perr := a.confirmPlan(err, "Stop this build?")
 				if perr != nil {
 					return perr
 				}
 				if !ok {
 					return err
 				}
-				// Pin the build shown in the plan: re-resolving a permalink
-				// like "last" could hit a build started while the prompt was open.
-				e, _ := errs.As(err)
-				plan, _ := e.Details.(*core.Plan)
-				if plan == nil || plan.Number <= 0 {
-					return errs.Internal("confirmation plan has no build number")
-				}
-				in.Ref = core.BuildRef(strconv.Itoa(plan.Number))
-				in.Confirm = true
+				in.Ref, in.Confirm = core.BuildRef(strconv.Itoa(n)), true
 				out, err = env.Service.BuildStop(cmd.Context(), in)
 			}
 			if err != nil {
@@ -244,6 +356,23 @@ func (a *app) canAsk() bool {
 		return a.d.CanAsk()
 	}
 	return !a.g.JSONMode(a.d.Stdout) && clix.CanPrompt(a.d.Stdin, a.d.Stdout)
+}
+
+// confirmPlan asks about a NEEDS_CONFIRMATION error and returns the build
+// number from its plan. The caller re-runs with that number pinned:
+// re-resolving a permalink like "last" could hit a build started while the
+// prompt was open.
+func (a *app) confirmPlan(needs error, question string) (int, bool, error) {
+	ok, err := a.confirm(needs, question)
+	if err != nil || !ok {
+		return 0, false, err
+	}
+	e, _ := errs.As(needs)
+	plan, _ := e.Details.(*core.Plan)
+	if plan == nil || plan.Number <= 0 {
+		return 0, false, errs.Internal("confirmation plan has no build number")
+	}
+	return plan.Number, true, nil
 }
 
 // confirm shows the plan from a NEEDS_CONFIRMATION error and asks y/N on stderr.
@@ -325,6 +454,8 @@ func (a *app) logCmd() *cobra.Command {
 	var (
 		lines int
 		stage string
+		step  string
+		raw   bool
 	)
 	tail := &cobra.Command{
 		Use:   "tail <job> [ref]",
@@ -332,7 +463,11 @@ func (a *app) logCmd() *cobra.Command {
 		Long: opShort(core.OpBuildLog) + `
 
 --lines defaults to and is capped by the policy max_log_lines. --stage limits
-the output to one pipeline stage (name or id, see 'build stages').
+the output to one pipeline stage (name or id, see 'build stages'): the logs of
+its steps, including nested stages, read from the last step backwards until
+there are enough lines. --step failed reads only the failing step (of --stage,
+or of the stage where the build first failed); --step also takes a step id.
+ANSI codes and timestamper prefixes are stripped unless --raw is set.
 
 ` + jobArgHelp,
 		Args: cobra.RangeArgs(1, 2),
@@ -342,7 +477,7 @@ the output to one pipeline stage (name or id, see 'build stages').
 				return err
 			}
 			out, err := env.Service.BuildLog(cmd.Context(), core.BuildLogIn{
-				Job: args[0], Ref: core.BuildRef(optArg(args, 1)), Lines: lines, Stage: stage,
+				Job: args[0], Ref: core.BuildRef(optArg(args, 1)), Lines: lines, Stage: stage, Step: step, Raw: raw,
 			})
 			if err != nil {
 				return err
@@ -352,6 +487,8 @@ the output to one pipeline stage (name or id, see 'build stages').
 	}
 	tail.Flags().IntVarP(&lines, "lines", "n", 0, "number of trailing lines (default: policy max_log_lines)")
 	tail.Flags().StringVar(&stage, "stage", "", "only this stage's log (name or id)")
+	tail.Flags().StringVar(&step, "step", "", `"failed" for only the failing step's log, or a step id`)
+	tail.Flags().BoolVar(&raw, "raw", false, "keep ANSI codes and timestamp prefixes")
 
 	var (
 		pattern    string
@@ -379,7 +516,7 @@ the output to one pipeline stage (name or id, see 'build stages').
 				return err
 			}
 			out, err := env.Service.LogSearch(cmd.Context(), core.LogSearchIn{
-				Job: args[0], Ref: core.BuildRef(optArg(args, 1)), Pattern: pattern, Context: ctxLines, MaxMatches: maxMatches,
+				Job: args[0], Ref: core.BuildRef(optArg(args, 1)), Pattern: pattern, Context: ctxLines, MaxMatches: maxMatches, Raw: raw,
 			})
 			if err != nil {
 				return err
@@ -390,6 +527,7 @@ the output to one pipeline stage (name or id, see 'build stages').
 	search.Flags().StringVarP(&pattern, "pattern", "e", "", "regular expression (required)")
 	search.Flags().IntVarP(&ctxLines, "context", "C", 0, "lines of context around each match")
 	search.Flags().IntVar(&maxMatches, "max-matches", core.DefaultMaxMatches, "stop after this many matches")
+	search.Flags().BoolVar(&raw, "raw", false, "match lines with ANSI codes and timestamp prefixes kept")
 
 	return group("log", "Read and search build logs", tail, search)
 }

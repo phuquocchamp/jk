@@ -31,7 +31,7 @@ func connect(t *testing.T, s *mcp.Server) *mcp.ClientSession {
 }
 
 func TestToolsFilteredByTier(t *testing.T) {
-	cases := map[policy.Tier]int{policy.TierRead: 9, policy.TierWrite: 11, policy.TierDanger: 12}
+	cases := map[policy.Tier]int{policy.TierRead: 12, policy.TierWrite: 13, policy.TierDanger: 15}
 	for tier, want := range cases {
 		cs := connect(t, New(core.NewService(nil, nil), tier, "test"))
 		res, err := cs.ListTools(context.Background(), nil)
@@ -339,8 +339,8 @@ func TestBuildRefAcceptsInteger(t *testing.T) {
 			t.Errorf("%s ref lost its description", tool.Name)
 		}
 	}
-	if withRef != 7 {
-		t.Errorf("%d tools have ref, want 7", withRef)
+	if withRef != 10 {
+		t.Errorf("%d tools have ref, want 10", withRef)
 	}
 
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{
