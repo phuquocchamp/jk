@@ -59,14 +59,28 @@ changelog:
 
 release:
   prerelease: auto
+  # A pinned copy of the installer for this version.
+  extra_files:
+    - glob: ./install.sh
   footer: |
     ## Install
 
     ```sh
+    curl -fsSL https://raw.githubusercontent.com/phuquocchamp/jk/main/install.sh | sh -s -- --version {{ .Tag }}
+    # or
     go install github.com/phuquocchamp/jk/cmd/jk@{{ .Tag }}
     ```
 
-    Or download the archive for your platform below, check it against
-    `checksums.txt`, and put `jk` on your `PATH`.
+    Or download the archive for your platform below and check it against
+    `checksums.txt` (and its build provenance with
+    `gh attestation verify <archive> -R phuquocchamp/jk`).
+
+    Then set it up for your agent:
+
+    ```sh
+    jk auth login
+    jk setup skill
+    jk setup mcp --tier read
+    ```
 
     Docs: https://phuquocchamp.github.io/jk/

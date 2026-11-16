@@ -74,7 +74,7 @@ release:
 	scripts/release.sh $(BUMP) $(if $(PRE),--pre $(PRE))
 
 shellcheck:
-	shellcheck scripts/*.sh
+	shellcheck scripts/*.sh install.sh
 
 clean:
 	rm -rf bin dist docs/dist docs/.astro
