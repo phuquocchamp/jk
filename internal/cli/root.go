@@ -52,6 +52,9 @@ type Deps struct {
 	// CanAsk overrides the interactive-confirmation check (tests only); nil
 	// means human mode with stdin and stdout on a terminal.
 	CanAsk func() bool
+	// System is what 'jk setup' uses to find binaries and run claude; nil
+	// means the real OS.
+	System *System
 }
 
 // app carries Deps into the command constructors.
@@ -102,6 +105,7 @@ Errors go to stderr ({"error":{...}} in JSON mode) with stable exit codes:
 		a.testCmd(),
 		a.queueCmd(),
 		a.mcpCmd(),
+		a.setupCmd(),
 		a.versionCmd(),
 	)
 	clix.PrepareUsageErrors(root)
