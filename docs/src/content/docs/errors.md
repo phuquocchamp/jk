@@ -24,7 +24,9 @@ jk job list team-a --jq '.jobs[] | select(.color == "red") | .path'
   left out.
 - When a log result is larger than 64KB, it is written to a file under the
   system temp dir (`$TMPDIR/jk/`, or a private `$TMPDIR/jk-*` dir when that one
-  is not owned by you with mode 0700), and `spilled_to` holds its path.
+  is not owned by you with mode 0700), and `spilled_to` holds its path. Results also carry
+  `spilled_uri` (`jk://spill/<name>`); only `jk mcp` can serve it (`resources/read`),
+  so CLI users read `spilled_to`.
 
 ### Tests and triggers
 

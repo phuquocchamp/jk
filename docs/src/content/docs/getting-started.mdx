@@ -106,8 +106,9 @@ off: [Configuration](/jk/configuration/).
 ```sh
 jk job list                                   # jobs at the root
 jk job list team-a                            # inside a folder
-jk build get team-a/api/main lastFailed       # what happened
-jk build stages team-a/api/main lastFailed    # which stage failed
+jk build diagnose team-a/api/main             # why it failed: stage, step, log, tests
+jk build stages team-a/api/main lastFailed    # which stage failed (first_failed)
+jk log tail team-a/api/main lastFailed --step failed -n 200   # the failing step only
 jk log tail team-a/api/main lastFailed --stage Test -n 200
 jk log search team-a/api/main 57 -e '(?i)error' -C 3
 jk test failed team-a/api/main lastFailed

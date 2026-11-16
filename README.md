@@ -20,8 +20,8 @@
 
 jk is a Jenkins CLI and MCP server in one Go binary. The CLI prints only data
 on stdout (JSON when piped) and fails with stable error codes. `jk mcp` serves
-the same 12 operations as MCP tools. A policy in your config decides what an
-agent may do: read only (the default), trigger and replay builds, or stop them.
+the same 15 operations as MCP tools. A policy in your config decides what an
+agent may do: read only (the default), trigger builds, or replay and stop them.
 
 ## Installation
 
@@ -88,7 +88,13 @@ More: [authentication](https://phuquocchamp.github.io/jk/authentication/),
 
 ## Debug A Failed Build
 
-Go from "it's red" to the failing stage, log lines and tests:
+Go from "it's red" to the failing stage, step, log lines and tests in one call:
+
+```sh
+jk build diagnose team-a/api/main                  # lastFailed by default
+```
+
+Or step by step:
 
 ```sh
 jk build get    team-a/api/main lastFailed         # what happened
@@ -123,6 +129,11 @@ claude mcp add jk -- jk mcp
 claude mcp add jk -- jk mcp --tier read   # read-only even if the config allows more
 ```
 
+Danger tools (`build_replay`, `build_stop`) ask the user through MCP
+elicitation when the client supports it, so the agent cannot approve its own
+action. Waits stream progress and stop after 45s with a `next` call; results
+over 64 KB are also served as `jk://spill/...` resources.
+
 `jk mcp` resolves the token the same way the CLI does, so the keyring works
 here too and the token never has to sit in `.mcp.json`. Don't add it with
 `claude mcp add -e JENKINS_API_TOKEN=...`: Claude Code would save it in plain
@@ -136,16 +147,18 @@ For agents that run shell commands, a Claude Code skill for the CLI is in
 
 ## Tools
 
-12 operations, each a CLI command and an MCP tool (`jenkins_` + name):
-**9 read · 2 write · 1 danger**.
+15 operations, each a CLI command and an MCP tool (`jenkins_` + name):
+**12 read · 1 write · 2 danger**.
 
 | Area | CLI | MCP tool | Tier |
 |---|---|---|---|
 | **Auth** | `auth status` | `jenkins_whoami` | read |
 | **Jobs** | `job list [folder]` · `job get <job>` | `jenkins_job_list` · `jenkins_job_get` | read |
-| **Builds** | `build get <job> [ref]` · `build stages <job> [ref]` | `jenkins_build_get` · `jenkins_build_stages` | read |
-| | `build trigger <job> [-p k=v ...] [--wait]` · `build replay <job> <ref> --script-file F` | `jenkins_build_trigger` · `jenkins_build_replay` | write |
-| | `build stop <job> <ref> [--yes]` | `jenkins_build_stop` | danger |
+| **Builds** | `build diagnose <job> [ref]` | `jenkins_build_diagnose` | read |
+| | `build get <job> [ref]` · `build stages <job> [ref]` | `jenkins_build_get` · `jenkins_build_stages` | read |
+| | `build script <job> [ref]` · `build wait <job> [ref] [--queue-id N]` | `jenkins_build_replay_script` · `jenkins_build_wait` | read |
+| | `build trigger <job> [-p k=v ...] [--wait]` | `jenkins_build_trigger` | write |
+| | `build replay <job> <ref> --script-file F [--yes]` · `build stop <job> <ref> [--yes]` | `jenkins_build_replay` · `jenkins_build_stop` | danger |
 | **Logs** | `log tail <job> [ref] [-n N] [--stage NAME]` · `log search <job> [ref] -e RE` | `jenkins_build_log` · `jenkins_log_search` | read |
 | **Tests** | `test failed <job> [ref]` | `jenkins_test_failed` | read |
 | **Queue** | `queue get <id>` | `jenkins_queue_get` | read |
@@ -172,12 +185,12 @@ profiles:
       deny:  { jobs: ["prod/**"] }      # deny wins over allow
 ```
 
-- `read` (default) allows the 9 read tools; `write` adds trigger and replay;
-  `danger` adds stop.
+- `read` (default) allows the 12 read tools; `write` adds trigger;
+  `danger` adds replay (it runs arbitrary pipeline code) and stop.
 - `--tier` can only **lower** the configured tier. In MCP, tools above the
   tier are not registered at all.
-- `build stop` needs `--yes` (MCP: `confirm: true`); without it jk exits 7
-  with the plan. Write operations accept `--dry-run`.
+- `build stop` and `build replay` need `--yes` (MCP: `confirm: true`); without
+  it jk exits 7 with the plan (for replay, a diff against the original script). Write operations accept `--dry-run`.
 - **The tier is not a sandbox.** The real boundary is the Jenkins user's
   permissions. See [Policy](https://phuquocchamp.github.io/jk/policy/).
 
@@ -234,14 +247,14 @@ make docs-serve  # regenerate the CLI reference and preview the docs site
 |---|---|
 | `cmd/jk` | Binary entry point |
 | `internal/cli` | Cobra commands |
-| `internal/core` | The 12 operations, shared by CLI and MCP |
+| `internal/core` | The 15 operations, shared by CLI and MCP |
 | `internal/client` | Jenkins HTTP client |
 | `internal/mcpserver` | `jk mcp` tool registration |
 | `internal/kit` | Shared building blocks: auth (keyring), config, policy, errors, output |
 | `skills/jenkins` | Claude Code skill for the CLI |
-| `docs` | MkDocs site |
+| `docs` | Astro Starlight site |
 
-Releasing: [docs/release.md](docs/release.md).
+Releasing: [docs/src/content/docs/release.md](docs/src/content/docs/release.md).
 
 ## Contributing
 
