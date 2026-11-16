@@ -26,8 +26,14 @@ type fakeBackend struct {
 	getBuild      func(job string, ref BuildRef) (Build, error)
 	getRun        func(job string, n int) (Run, error)
 	getStageNodes func(job string, n int, id string) ([]StageNode, error)
-	getNodeLog    func(job string, n int, id string) (NodeLog, error)
+	stageTree     func(job string, n int) ([]GraphStage, error) // nil: NOT_FOUND (no plugin)
+	steps         func(job string, n int) ([]GraphStep, error)
+	stepError     func(job string, n int, id string) (string, error)
+	nodeLog       func(job string, n int, id string) (string, error)
 	console       func(job string, n int) (io.ReadCloser, error)
+	consoleSize   func(job string, n int) (int64, error) // nil: NOT_FOUND (consoleText path)
+	consoleFrom   func(job string, n int, start int64) (io.ReadCloser, error)
+	replayScript  func(job string, n int) (ReplayScript, error)
 	testReport    func(job string, n int) (TestReport, error)
 	queueItem     func(id int64) (QueueItem, error)
 	trigger       func(job string, params map[string]string, parameterized bool) (int64, error)
@@ -104,12 +110,58 @@ func (f *fakeBackend) GetStageNodes(ctx context.Context, job string, n int, id s
 	}
 	return f.getStageNodes(job, n, id)
 }
-func (f *fakeBackend) GetNodeLog(ctx context.Context, job string, n int, id string) (NodeLog, error) {
-	f.rec("GetNodeLog %s %d %s", job, n, id)
-	if f.getNodeLog == nil {
-		return NodeLog{}, errUnexpected
+func (f *fakeBackend) GetStageTree(ctx context.Context, job string, n int) ([]GraphStage, error) {
+	f.rec("GetStageTree %s %d", job, n)
+	if f.stageTree == nil {
+		return nil, errs.NotFound("stages/tree: HTTP 404")
 	}
-	return f.getNodeLog(job, n, id)
+	return f.stageTree(job, n)
+}
+func (f *fakeBackend) GetSteps(ctx context.Context, job string, n int) ([]GraphStep, error) {
+	f.rec("GetSteps %s %d", job, n)
+	if f.steps == nil {
+		return nil, errUnexpected
+	}
+	return f.steps(job, n)
+}
+func (f *fakeBackend) GetStepError(ctx context.Context, job string, n int, id string) (string, error) {
+	f.rec("GetStepError %s %d %s", job, n, id)
+	if f.stepError == nil {
+		return "", errUnexpected
+	}
+	return f.stepError(job, n, id)
+}
+func (f *fakeBackend) StreamNodeLog(ctx context.Context, job string, n int, id string) (io.ReadCloser, error) {
+	f.rec("StreamNodeLog %s %d %s", job, n, id)
+	if f.nodeLog == nil {
+		return nil, errUnexpected
+	}
+	text, err := f.nodeLog(job, n, id)
+	if err != nil {
+		return nil, err
+	}
+	return io.NopCloser(strings.NewReader(text)), nil
+}
+func (f *fakeBackend) ConsoleSize(ctx context.Context, job string, n int) (int64, error) {
+	f.rec("ConsoleSize %s %d", job, n)
+	if f.consoleSize == nil {
+		return 0, errs.NotFound("progressiveText: HTTP 404")
+	}
+	return f.consoleSize(job, n)
+}
+func (f *fakeBackend) StreamConsoleFrom(ctx context.Context, job string, n int, start int64) (io.ReadCloser, error) {
+	f.rec("StreamConsoleFrom %s %d %d", job, n, start)
+	if f.consoleFrom == nil {
+		return nil, errUnexpected
+	}
+	return f.consoleFrom(job, n, start)
+}
+func (f *fakeBackend) GetReplayScript(ctx context.Context, job string, n int) (ReplayScript, error) {
+	f.rec("GetReplayScript %s %d", job, n)
+	if f.replayScript == nil {
+		return ReplayScript{}, errUnexpected
+	}
+	return f.replayScript(job, n)
 }
 func (f *fakeBackend) StreamConsole(ctx context.Context, job string, n int) (io.ReadCloser, error) {
 	f.rec("StreamConsole %s %d", job, n)
@@ -463,16 +515,16 @@ func stageBackend() *fakeBackend {
 			}
 			return nil, nil
 		},
-		getNodeLog: func(_ string, _ int, id string) (NodeLog, error) {
+		nodeLog: func(_ string, _ int, id string) (string, error) {
 			switch id {
 			case "13":
-				return NodeLog{Text: "compile <ok>\nlink"}, nil
+				return "compile <ok>\nlink", nil
 			case "15":
-				return NodeLog{Text: "package\n", HasMore: true}, nil
+				return "package\n", nil
 			case "30":
-				return NodeLog{Text: "test output\n"}, nil
+				return "test output\n", nil
 			}
-			return NodeLog{}, errs.NotFound("no node")
+			return "", errs.NotFound("no node")
 		},
 	}
 }
@@ -484,7 +536,7 @@ func TestBuildLogStage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Stage != "Build" || out.Text != "compile <ok>\nlink\npackage" || out.TotalLines != 3 || !out.Truncated {
+	if out.Stage != "Build" || out.Text != "compile <ok>\nlink\npackage" || out.TotalLines != 3 || out.Truncated || out.Source != "steps" {
 		t.Fatalf("got %+v", out)
 	}
 	if fb.called("StreamConsole") {
@@ -582,11 +634,11 @@ func TestBuildTriggerDryRun(t *testing.T) {
 		return Job{Parameters: []ParamDef{{Name: "ENV"}}}, nil
 	}}
 	s := newSvc(fb, policy.Policy{Tier: policy.TierWrite})
-	out, err := s.BuildTrigger(context.Background(), BuildTriggerIn{Job: "proj/feature%2Ffoo", Params: map[string]string{"ENV": "qa", "X": "1"}, DryRun: true})
+	out, err := s.BuildTrigger(context.Background(), BuildTriggerIn{Job: "proj/feature%2Ffoo", Params: map[string]string{"ENV": "qa", "X": "1"}, AllowUnknown: true, DryRun: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !out.DryRun || out.Plan == nil || out.Plan.Path != "/job/proj/job/feature%252Ffoo/buildWithParameters" || out.Plan.Params["ENV"] != "qa" || !strings.Contains(out.Plan.Note, "X") {
+	if !out.DryRun || out.Plan == nil || out.Plan.Path != "/job/proj/job/feature%252Ffoo/buildWithParameters" || out.Plan.Params["ENV"] != "qa" || len(out.Warnings) != 1 || !strings.Contains(out.Warnings[0], "X") {
 		t.Fatalf("got %+v plan %+v", out, out.Plan)
 	}
 	if fb.called("TriggerBuild") {
@@ -727,8 +779,9 @@ func TestBuildReplay(t *testing.T) {
 	fb := &fakeBackend{
 		resolveBuild: func(string, BuildRef) (int, error) { return 8, nil },
 		replay:       func(job string, n int, s string) (int64, error) { script = s; return 0, nil },
+		replayScript: func(string, int) (ReplayScript, error) { return ReplayScript{Main: "node {}\n"}, nil },
 	}
-	s := newSvc(fb, policy.Policy{Tier: policy.TierWrite})
+	s := newSvc(fb, policy.Policy{Tier: policy.TierDanger})
 	ctx := context.Background()
 	out, err := s.BuildReplay(ctx, BuildReplayIn{Job: "app", Ref: "last", Script: "pipeline {}", DryRun: true})
 	if err != nil || out.Plan == nil || out.Plan.Path != "/job/app/8/replay/run" || out.FromNumber != 8 || fb.called("ReplayBuild") {
@@ -737,7 +790,7 @@ func TestBuildReplay(t *testing.T) {
 	if strings.Contains(out.Plan.Params["mainScript"], "pipeline") {
 		t.Fatal("plan should not echo the script")
 	}
-	out, err = s.BuildReplay(ctx, BuildReplayIn{Job: "app", Ref: "8", Script: "pipeline {}"})
+	out, err = s.BuildReplay(ctx, BuildReplayIn{Job: "app", Ref: "8", Script: "pipeline {}", Confirm: true})
 	if err != nil || script != "pipeline {}" || out.DryRun {
 		t.Fatalf("got %+v, %v", out, err)
 	}

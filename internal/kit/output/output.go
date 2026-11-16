@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"text/tabwriter"
 	"time"
 
@@ -406,7 +407,34 @@ func Spill(content, prefix string) (string, error) {
 	if _, err := io.WriteString(f, content); err != nil {
 		return "", errs.Wrap(errs.CodeInternal, err, "write spill file")
 	}
+	spills.Store(filepath.Base(f.Name()), f.Name())
 	return f.Name(), nil
+}
+
+// spills maps the base name of every file Spill wrote in this process to its
+// path, so SpillPath only ever resolves files this process created.
+var spills sync.Map
+
+// SpillURI returns the URI under which an MCP server exposes a spill file:
+// <AppName>://spill/<base name>.
+func SpillURI(path string) string {
+	if path == "" {
+		return ""
+	}
+	return AppName + "://spill/" + filepath.Base(path)
+}
+
+// SpillPath resolves a SpillURI to the file Spill wrote in this process.
+func SpillPath(uri string) (string, bool) {
+	name, ok := strings.CutPrefix(uri, AppName+"://spill/")
+	if !ok || name == "" || strings.ContainsAny(name, `/\`) {
+		return "", false
+	}
+	p, ok := spills.Load(name)
+	if !ok {
+		return "", false
+	}
+	return p.(string), true
 }
 
 func spillDir() (string, error) {

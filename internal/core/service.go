@@ -36,7 +36,18 @@ type Service struct {
 	sleep        func(ctx context.Context, d time.Duration) error
 	pollInterval time.Duration
 	spill        func(content, prefix string) (string, error)
+	// maxWait caps wait timeouts (0 = no cap). The MCP server sets it so a
+	// tool call returns before typical client timeouts; see SetMaxWait.
+	maxWait time.Duration
 }
+
+// DefaultMCPMaxWait is the wait cap the MCP server applies to build_trigger
+// and build_wait, below common MCP client request timeouts.
+const DefaultMCPMaxWait = 45 * time.Second
+
+// SetMaxWait caps the timeout of build_trigger --wait and build_wait. A
+// capped wait that runs out returns timed_out with a next call to continue.
+func (s *Service) SetMaxWait(d time.Duration) { s.maxWait = d }
 
 // Option configures a Service.
 type Option func(*Service)

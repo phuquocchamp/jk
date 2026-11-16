@@ -235,6 +235,48 @@ func (c *Client) getJSON(ctx context.Context, escapedPath string, q url.Values, 
 	return nil
 }
 
+// getText GETs path?query and returns the body (at most limit bytes), bounded
+// by the per-request timeout.
+func (c *Client) getText(ctx context.Context, escapedPath string, q url.Values, limit int64) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	rc, _, err := c.stream(ctx, http.MethodGet, escapedPath, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	b, err := io.ReadAll(io.LimitReader(rc, limit))
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, errs.Wrap(errs.CodeUpstream, ctx.Err(), "GET "+escapedPath+": request timed out").WithRetryable(true)
+		}
+		return nil, errs.Wrap(errs.CodeUpstream, err, "GET "+escapedPath+": reading the response failed").WithRetryable(true)
+	}
+	return b, nil
+}
+
+// stream sends a GET or HEAD and returns the unread body and headers, bound
+// only to ctx. A >= 400 status is returned as an error.
+func (c *Client) stream(ctx context.Context, method, escapedPath string, q url.Values) (io.ReadCloser, http.Header, error) {
+	u, err := c.endpoint(escapedPath, q)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := c.newRequest(ctx, method, u, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	resp, err := c.do(c.http, req)
+	if err != nil {
+		return nil, nil, err
+	}
+	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
+		return nil, nil, statusError(resp)
+	}
+	return resp.Body, resp.Header, nil
+}
+
 // postResult is what a POST returns to the caller.
 type postResult struct {
 	Status   int

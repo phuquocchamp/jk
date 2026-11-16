@@ -26,6 +26,7 @@ jk log search <job> [ref] --pattern RE [flags]
   -h, --help              help for search
       --max-matches int   stop after this many matches (default 50)
   -e, --pattern string    regular expression (required)
+      --raw               match lines with ANSI codes and timestamp prefixes kept
 ```
 
 ### Options inherited from parent commands

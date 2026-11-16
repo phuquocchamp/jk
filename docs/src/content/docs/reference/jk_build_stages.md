@@ -1,13 +1,13 @@
 ---
 title: "jk build stages"
-description: "Find which pipeline stage failed: returns stages with status and duration."
+description: "Find which pipeline stage failed: returns stages (nested, with parent_id) with status, error and the failing step; first_failed names the stage to read, inherited marks parents that only failed because of it."
 ---
 
-Find which pipeline stage failed: returns stages with status and duration.
+Find which pipeline stage failed: returns stages (nested, with parent_id) with status, error and the failing step; first_failed names the stage to read, inherited marks parents that only failed because of it.
 
 ### Synopsis
 
-Find which pipeline stage failed: returns stages with status and duration.
+Find which pipeline stage failed: returns stages (nested, with parent_id) with status, error and the failing step; first_failed names the stage to read, inherited marks parents that only failed because of it.
 
 &lt;job> is a job path like folder/sub/job (multibranch: project/branch, with
 "/" in branch names written as %2F) or a full Jenkins job/build URL.
@@ -37,5 +37,5 @@ jk build stages <job> [ref] [flags]
 
 ### SEE ALSO
 
-* [jk build](/jk/reference/jk_build/)	 - Inspect, trigger, replay and stop builds
+* [jk build](/jk/reference/jk_build/)	 - Inspect, diagnose, trigger, replay and stop builds
 

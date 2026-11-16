@@ -26,14 +26,89 @@ func (v jobListView) TableRows() [][]string {
 type stagesView core.BuildStagesOut
 
 func (v stagesView) TableHeader() []string {
-	return []string{"id", "name", "status", "duration", "started"}
+	return []string{"id", "name", "status", "duration", "failed step"}
 }
 func (v stagesView) TableRows() [][]string {
+	depth := map[string]int{}
 	rows := make([][]string, 0, len(v.Stages))
 	for _, s := range v.Stages {
-		rows = append(rows, []string{s.ID, s.Name, s.Status, output.HumanDuration(s.DurationMs), humanTime(s.StartTime)})
+		d := 0
+		if s.ParentID != "" {
+			d = depth[s.ParentID] + 1
+		}
+		depth[s.ID] = d
+		name := strings.Repeat("  ", d) + s.Name
+		if s.ID == v.FirstFailed {
+			name += "  <- first failure"
+		} else if s.Inherited {
+			name += "  (inherited)"
+		}
+		step := ""
+		if s.FailedStep != nil {
+			step = s.FailedStep.Name
+			if s.FailedStep.Error != nil {
+				step += " (" + s.FailedStep.Error.Message + ")"
+			}
+		}
+		rows = append(rows, []string{s.ID, name, s.Status, output.HumanDuration(s.DurationMs), step})
 	}
 	return rows
+}
+
+type scriptView core.BuildReplayScriptOut
+
+func (v scriptView) PlainText() string {
+	if v.SpilledTo != "" {
+		return fmt.Sprintf("script of %s #%d is %d bytes; written to %s\n", v.Job, v.Number, v.Bytes, v.SpilledTo)
+	}
+	return v.MainScript
+}
+
+type diagnoseView core.BuildDiagnoseOut
+
+func (v diagnoseView) PlainText() string {
+	var b strings.Builder
+	state := v.Result
+	if v.Building {
+		state = "BUILDING"
+	}
+	fmt.Fprintf(&b, "%s #%d: %s (%s)\n%s\n", v.Job, v.Number, state, output.HumanDuration(v.DurationMs), v.URL)
+	if f := v.Failure; f != nil {
+		b.WriteString("\n")
+		if f.Stage != "" {
+			fmt.Fprintf(&b, "failed stage: %s (id %s)\n", f.Stage, f.StageID)
+		}
+		if f.Step != nil {
+			fmt.Fprintf(&b, "failed step:  %s\n", f.Step.Name)
+			if f.Step.Error != nil {
+				fmt.Fprintf(&b, "error:        %s\n", f.Step.Error.Message)
+			}
+		}
+		if len(v.FailedStages) > 1 {
+			fmt.Fprintf(&b, "also failed:  %s\n", strings.Join(v.FailedStages[1:], ", "))
+		}
+		fmt.Fprintf(&b, "\n--- last %d lines of the %s log ---\n%s\n", f.LogLines, f.LogSource, f.Log)
+	}
+	if t := v.Tests; t != nil {
+		fmt.Fprintf(&b, "\ntests: %d failed, %d passed, %d skipped\n", t.FailCount, t.PassCount, t.SkipCount)
+		for _, c := range t.Failed {
+			fmt.Fprintf(&b, "  %s %s.%s\n", c.Status, c.ClassName, c.Name)
+		}
+	}
+	if len(v.Changes) > 0 {
+		fmt.Fprintf(&b, "\nchanges (%d):\n", v.ChangesTotal)
+		for _, c := range v.Changes {
+			id := c.CommitID
+			if len(id) > 8 {
+				id = id[:8]
+			}
+			fmt.Fprintf(&b, "  %s %s (%s)\n", id, c.Message, c.Author)
+		}
+	}
+	for _, w := range v.Warnings {
+		fmt.Fprintf(&b, "\nwarning: %s\n", w)
+	}
+	return b.String()
 }
 
 type logView core.BuildLogOut

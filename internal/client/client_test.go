@@ -356,7 +356,8 @@ func TestGetRun(t *testing.T) {
 	}
 	want := core.Run{ID: "3", Name: "#3", Status: "FAILED", DurationMs: 125000, Stages: []core.Stage{
 		{ID: "6", Name: "Checkout", Status: "SUCCESS", StartTime: time.UnixMilli(1700000001000).UTC(), DurationMs: 3000},
-		{ID: "17", Name: "Build", Status: "FAILED", StartTime: time.UnixMilli(1700000004000).UTC(), DurationMs: 120000},
+		{ID: "17", Name: "Build", Status: "FAILED", StartTime: time.UnixMilli(1700000004000).UTC(), DurationMs: 120000,
+			Error: &core.StageError{Type: "hudson.AbortException", Message: "script returned exit code 2"}},
 	}}
 	if !reflect.DeepEqual(run, want) {
 		t.Fatalf("got %+v", run)
@@ -364,42 +365,143 @@ func TestGetRun(t *testing.T) {
 	one(t, f)
 }
 
-func TestStageNodesAndLog(t *testing.T) {
+func TestStageNodes(t *testing.T) {
 	f := newFake(t)
 	f.on("GET", "/job/demo-app/job/main/3/execution/node/17/wfapi/describe", serveFile(t, "stage.json"))
-	f.on("GET", "/job/demo-app/job/main/3/execution/node/19/wfapi/log", serveFile(t, "nodelog.json"))
-	c := f.client()
-	nodes, err := c.GetStageNodes(ctx, "demo-app/main", 3, "17")
+	nodes, err := f.client().GetStageNodes(ctx, "demo-app/main", 3, "17")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []core.StageNode{{ID: "18", Name: "Shell Script", Status: "SUCCESS"}, {ID: "19", Name: "Shell Script", Status: "FAILED"}}
+	want := []core.StageNode{
+		{ID: "18", Name: "Shell Script", Status: "SUCCESS", Command: "make deps"},
+		{ID: "19", Name: "Shell Script", Status: "FAILED", Command: "make test",
+			Error: &core.StageError{Type: "hudson.AbortException", Message: "script returned exit code 2"}},
+	}
 	if !reflect.DeepEqual(nodes, want) {
 		t.Fatalf("got %+v", nodes)
 	}
-	l, err := c.GetNodeLog(ctx, "demo-app/main", 3, "19")
+}
+
+func TestStageTreeAndSteps(t *testing.T) {
+	f := newFake(t)
+	f.on("GET", "/job/demo-app/job/main/3/stages/tree", serveFile(t, "pgv_tree.json"))
+	f.on("GET", "/job/demo-app/job/main/3/stages/allSteps", serveFile(t, "pgv_steps.json"))
+	f.on("GET", "/job/demo-app/job/main/3/stages/exceptionText", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("nodeId") != "19" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		_, _ = io.WriteString(w, "script returned exit code 2")
+	})
+	c := f.client()
+	tree, err := c.GetStageTree(ctx, "demo-app/main", 3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if l.Text != "+ make test\n<x> hi & link\nexit 2\n" {
-		t.Fatalf("text = %q", l.Text)
+	if len(tree) != 3 || tree[1].Name != "Platforms" || tree[1].State != "failure" || len(tree[1].Children) != 2 {
+		t.Fatalf("tree %+v", tree)
 	}
-	if l.NodeID != "19" || l.Status != "FAILED" || l.Length != 96 || l.HasMore || l.ConsoleURL == "" {
-		t.Fatalf("got %+v", l)
+	mac := tree[1].Children[1]
+	if mac.Type != "PARALLEL" || len(mac.Children) != 2 || mac.Children[1].State != "skipped" || mac.Children[0].StartTime != time.UnixMilli(1700000004200).UTC() {
+		t.Fatalf("mac leg %+v", mac)
+	}
+	steps, err := c.GetSteps(ctx, "demo-app/main", 3)
+	if err != nil || len(steps) != 3 || steps[2] != (core.GraphStep{ID: "19", Name: "make test", StageID: "17", State: "failure", DurationMs: 38000}) {
+		t.Fatalf("steps %+v, %v", steps, err)
+	}
+	msg, err := c.GetStepError(ctx, "demo-app/main", 3, "19")
+	if err != nil || msg != "script returned exit code 2" {
+		t.Fatalf("exception %q, %v", msg, err)
+	}
+
+	// Without the plugin: NOT_FOUND with a hint, so the service falls back to wfapi.
+	g := newFake(t)
+	_, err = g.client().GetStageTree(ctx, "demo-app/main", 3)
+	if e := wantCode(t, err, errs.CodeNotFound); !strings.Contains(e.Hint, "Pipeline Graph View") {
+		t.Fatalf("hint %q", e.Hint)
 	}
 }
 
-func TestPlainLogText(t *testing.T) {
-	for in, want := range map[string]string{
-		`&lt;x&gt; <span class="t">hi</span> &amp;`: "<x> hi &",
-		`a &lt;b&gt;c&lt;/b&gt; d`:                  "a <b>c</b> d",
-		`5 &lt; 6 and 7 > 3`:                        "5 < 6 and 7 > 3",
-		`&quot;q&quot; &#39;s&#39;`:                 `"q" 's'`,
-	} {
-		if got := plainLogText(in); got != want {
-			t.Errorf("plainLogText(%q) = %q, want %q", in, got, want)
+func TestStreamNodeLog(t *testing.T) {
+	f := newFake(t)
+	f.on("GET", "/job/demo-app/job/main/3/execution/node/19/log/logText/progressiveText", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("start") != "0" {
+			t.Errorf("start=%q", r.URL.Query().Get("start"))
 		}
+		w.Header().Set("X-Text-Size", "20")
+		_, _ = io.WriteString(w, "+ make test\nexit 2\n")
+	})
+	rc, err := f.client().StreamNodeLog(ctx, "demo-app/main", 3, "19")
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer rc.Close()
+	b, _ := io.ReadAll(rc)
+	if string(b) != "+ make test\nexit 2\n" {
+		t.Fatalf("got %q", b)
+	}
+}
+
+func TestConsoleSizeAndOffset(t *testing.T) {
+	f := newFake(t)
+	f.on("HEAD", "/job/a/5/logText/progressiveText", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Text-Size", "1866882")
+	})
+	f.on("GET", "/job/a/5/logText/progressiveText", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "from "+r.URL.Query().Get("start"))
+	})
+	c := f.client()
+	n, err := c.ConsoleSize(ctx, "a", 5)
+	if err != nil || n != 1866882 {
+		t.Fatalf("size %d, %v", n, err)
+	}
+	rc, err := c.StreamConsoleFrom(ctx, "a", 5, 1800000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(rc)
+	rc.Close()
+	if string(b) != "from 1800000" {
+		t.Fatalf("got %q", b)
+	}
+
+	g := newFake(t)
+	g.on("HEAD", "/job/a/5/logText/progressiveText", func(http.ResponseWriter, *http.Request) {})
+	if _, err := g.client().ConsoleSize(ctx, "a", 5); err == nil {
+		t.Fatal("missing X-Text-Size accepted")
+	}
+}
+
+func TestGetReplayScript(t *testing.T) {
+	f := newFake(t)
+	f.on("GET", "/job/demo-app/job/main/3/replay/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html;charset=utf-8")
+		_, _ = w.Write(fixture(t, "replay.html"))
+	})
+	rs, err := f.client().GetReplayScript(ctx, "demo-app/main", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "pipeline {\n  agent any\n  stages {\n    stage('Test') { steps { sh \"make test && echo <done>\" } }\n  }\n}\n"
+	if rs.Main != want {
+		t.Fatalf("main %q", rs.Main)
+	}
+	if len(rs.Loaded) != 1 || rs.Loaded["Script1"] != "def helper() { 1 }\n" {
+		t.Fatalf("loaded %+v", rs.Loaded)
+	}
+
+	// PR builds from untrusted sources have no replay page.
+	g := newFake(t)
+	_, err = g.client().GetReplayScript(ctx, "demo-app/PR-1", 1)
+	if e := wantCode(t, err, errs.CodeNotFound); !strings.Contains(e.Hint, "replay is not available") {
+		t.Fatalf("hint %q", e.Hint)
+	}
+
+	// A login page instead of the form.
+	h := newFake(t)
+	h.on("GET", "/job/a/1/replay/", func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, "<html>login</html>") })
+	_, err = h.client().GetReplayScript(ctx, "a", 1)
+	wantCode(t, err, errs.CodeUpstream)
 }
 
 func TestStreamConsole(t *testing.T) {

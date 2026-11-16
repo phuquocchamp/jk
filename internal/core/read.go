@@ -120,15 +120,11 @@ func (s *Service) BuildStages(ctx context.Context, in BuildStagesIn) (BuildStage
 	if err != nil {
 		return BuildStagesOut{}, err
 	}
-	run, err := s.backend.GetRun(ctx, path, n)
+	v, err := s.loadStages(ctx, path, n, true)
 	if err != nil {
 		return BuildStagesOut{}, err
 	}
-	stages := run.Stages
-	if stages == nil {
-		stages = []Stage{}
-	}
-	return BuildStagesOut{Job: path, Number: n, Status: run.Status, DurationMs: run.DurationMs, Stages: stages}, nil
+	return v.out, nil
 }
 
 // TestFailed returns failed cases only, error details trimmed. A build with no
@@ -141,13 +137,17 @@ func (s *Service) TestFailed(ctx context.Context, in TestFailedIn) (TestFailedOu
 	if err := nonNegative("limit", in.Limit); err != nil {
 		return TestFailedOut{}, err
 	}
-	limit := in.Limit
-	if limit == 0 {
-		limit = DefaultListLimit
-	}
 	n, err := s.number(ctx, path, ref)
 	if err != nil {
 		return TestFailedOut{}, err
+	}
+	return s.failedTests(ctx, path, n, in.Limit)
+}
+
+// failedTests reads the test report of build n; limit 0 means DefaultListLimit.
+func (s *Service) failedTests(ctx context.Context, path string, n, limit int) (TestFailedOut, error) {
+	if limit == 0 {
+		limit = DefaultListLimit
 	}
 	rep, err := s.backend.GetTestReport(ctx, path, n)
 	if err != nil {

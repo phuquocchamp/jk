@@ -7,18 +7,22 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/phuquocchamp/jk/internal/kit/errs"
+	"github.com/phuquocchamp/jk/internal/kit/output"
 )
 
 // maxMatchRunes caps each line (match or context) returned by log_search.
 const maxMatchRunes = 2000
 
 // BuildLog returns the last N lines of the console log, or of one stage's log
-// when Stage is set. The console is streamed through a ring buffer, so memory
-// stays bounded by N lines.
+// when Stage is set. Logs are streamed through a ring buffer, so memory stays
+// bounded by N lines. The console tail is read from a byte offset near the end
+// when Jenkins reports the log size, so a large log is not downloaded whole.
 func (s *Service) BuildLog(ctx context.Context, in BuildLogIn) (BuildLogOut, error) {
 	path, ref, err := s.prepare(OpBuildLog, in.Job, in.Ref, false)
 	if err != nil {
@@ -32,104 +36,292 @@ func (s *Service) BuildLog(ctx context.Context, in BuildLogIn) (BuildLogOut, err
 		return BuildLogOut{}, err
 	}
 	want, capped := s.policy.ClampLines(in.Lines)
-	out := BuildLogOut{Job: path, Number: n}
+	clean := newCleaner(in.Raw)
+	out := BuildLogOut{Job: path, Number: n, Stripped: clean.stripped()}
 
-	var src io.Reader
-	hasMore := false
-	if stage := strings.TrimSpace(in.Stage); stage != "" {
-		text, name, more, err := s.stageLog(ctx, path, n, stage)
+	var (
+		lines []string
+		total int
+		full  = true
+	)
+	step := strings.TrimSpace(in.Step)
+	if stage := strings.TrimSpace(in.Stage); stage != "" || step != "" {
+		st, ids, err := s.logTarget(ctx, path, n, stage, step)
 		if err != nil {
 			return BuildLogOut{}, err
 		}
-		src, hasMore, out.Stage = strings.NewReader(text), more, name
+		nt, err := s.tailNodes(ctx, path, n, ids, want, clean, false)
+		if err != nil {
+			return BuildLogOut{}, err
+		}
+		lines, total, full = nt.lines, nt.total, nt.full
+		out.Stage, out.Source = st.Name, "steps"
+		if step != "" {
+			out.Source, out.StepID = "step", ids[0]
+			if st.FailedStep != nil && st.FailedStep.ID == ids[0] {
+				out.Step = st.FailedStep.Name
+			}
+		}
+		out.StepsRead, out.StepsTotal = nt.read, len(ids)
 	} else {
-		rc, err := s.backend.StreamConsole(ctx, path, n)
+		t, info, err := s.tailConsole(ctx, path, n, want, clean)
 		if err != nil {
 			return BuildLogOut{}, err
 		}
-		defer rc.Close()
-		src = rc
+		lines, total = t.lines(), t.total
+		out.Source, out.TotalBytes, full = info.source, info.totalBytes, info.full
+		if !info.full {
+			out.ReadBytes = info.readBytes
+		}
 	}
-
-	tail := newTail(want)
-	if err := eachLine(src, func(l string) bool { tail.add(l); return true }); err != nil {
-		return BuildLogOut{}, readErr(ctx, err)
-	}
-	lines := tail.lines()
 	out.Lines = len(lines)
-	out.TotalLines = tail.total
-	out.Truncated = capped || hasMore || tail.total > len(lines)
+	if full {
+		out.TotalLines = total
+	}
+	out.Truncated = capped || !full || total > len(lines)
 	out.Text = strings.Join(lines, "\n")
 	if len(out.Text) > SpillThreshold {
 		p, err := s.spill(out.Text, spillPrefix(OpBuildLog, n))
 		if err != nil {
 			return BuildLogOut{}, err
 		}
-		out.SpilledTo, out.Text = p, ""
+		out.SpilledTo, out.SpilledURI, out.Text = p, output.SpillURI(p), ""
 	}
 	return out, nil
 }
 
-// stageLog concatenates the logs of all flow nodes of the stage matching sel
-// (exact id first, then case-insensitive name). It returns the text, the stage
-// name and whether Jenkins reported more text than it returned.
-func (s *Service) stageLog(ctx context.Context, job string, n int, sel string) (string, string, bool, error) {
-	run, err := s.backend.GetRun(ctx, job, n)
+// logTarget resolves what a stage/step log request reads: the stage (by name
+// or id; with only step set, the stage where the build first failed) and the
+// flow node ids, in order. step "failed" selects the failing step of that
+// stage (or of a stage nested in it); any other step value is a node id.
+func (s *Service) logTarget(ctx context.Context, path string, n int, sel, step string) (Stage, []string, error) {
+	v, err := s.loadStages(ctx, path, n, false)
 	if err != nil {
-		return "", "", false, err
+		return Stage{}, nil, err
 	}
-	st, ok := findStage(run.Stages, sel)
-	if !ok {
-		names := make([]string, 0, len(run.Stages))
-		for _, x := range run.Stages {
-			names = append(names, x.Name)
+	var st Stage
+	if sel != "" {
+		if st, err = selectStage(v.out.Stages, sel, n); err != nil {
+			return Stage{}, nil, err
 		}
-		e := errs.NotFound(fmt.Sprintf("stage %q not found in build %d", sel, n))
-		if len(names) > 0 {
-			e = e.WithHint("stages: " + strings.Join(names, ", "))
-		} else {
-			e = e.WithHint("the build has no pipeline stages; omit stage to read the console log")
+	} else {
+		i := slices.IndexFunc(v.out.Stages, func(x Stage) bool { return x.ID == v.out.FirstFailed })
+		if i < 0 {
+			return Stage{}, nil, errs.NotFound(fmt.Sprintf("build %d has no failed stage", n)).
+				WithHint("pass stage to read a stage's log, or omit step to read the console")
 		}
-		return "", "", false, e
+		st = v.out.Stages[i]
 	}
-	nodes, err := s.backend.GetStageNodes(ctx, job, n, st.ID)
-	if err != nil {
-		return "", "", false, err
-	}
-	if len(nodes) == 0 {
-		nodes = []StageNode{{ID: st.ID, Name: st.Name}}
-	}
-	var b strings.Builder
-	more := false
-	for _, nd := range nodes {
-		lg, err := s.backend.GetNodeLog(ctx, job, n, nd.ID)
-		if err != nil {
-			return "", "", false, err
+	switch {
+	case step == "":
+		ids, err := s.stageNodeIDs(ctx, path, n, v, st)
+		return st, ids, err
+	case strings.EqualFold(step, "failed"):
+		fs := st.FailedStep
+		if fs == nil {
+			// A parent or parallel branch: use the first failing nested stage.
+			in := descendants(v.out.Stages, st.ID)
+			if id := firstFailed(filterStages(v.out.Stages, in)); id != "" {
+				j := slices.IndexFunc(v.out.Stages, func(x Stage) bool { return x.ID == id })
+				st, fs = v.out.Stages[j], v.out.Stages[j].FailedStep
+			}
 		}
-		more = more || lg.HasMore
-		if lg.Text == "" {
-			continue
+		if fs == nil {
+			return Stage{}, nil, errs.NotFound(fmt.Sprintf("no failed step found in stage %q of build %d", st.Name, n)).
+				WithHint("read the whole stage (omit step), or check build_stages for first_failed")
 		}
-		b.WriteString(lg.Text)
-		if !strings.HasSuffix(lg.Text, "\n") {
-			b.WriteByte('\n')
-		}
+		return st, []string{fs.ID}, nil
+	default:
+		return st, []string{step}, nil
 	}
-	return b.String(), st.Name, more, nil
 }
 
-func findStage(stages []Stage, sel string) (Stage, bool) {
+func filterStages(stages []Stage, keep map[string]bool) []Stage {
+	var out []Stage
 	for _, st := range stages {
-		if st.ID == sel {
-			return st, true
+		if keep[st.ID] {
+			out = append(out, st)
 		}
 	}
-	for _, st := range stages {
-		if strings.EqualFold(st.Name, sel) {
-			return st, true
+	return out
+}
+
+// stageNodeIDs lists the flow nodes whose logs make up stage st.
+func (s *Service) stageNodeIDs(ctx context.Context, path string, n int, v stageView, st Stage) ([]string, error) {
+	if v.out.Source == SourcePGV && v.steps != nil {
+		in := descendants(v.out.Stages, st.ID)
+		var ids []string
+		for _, step := range v.steps {
+			if in[step.StageID] {
+				ids = append(ids, step.ID)
+			}
+		}
+		return ids, nil
+	}
+	nodes, err := s.backend.GetStageNodes(ctx, path, n, st.ID)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(nodes))
+	for _, nd := range nodes {
+		ids = append(ids, nd.ID)
+	}
+	if len(ids) == 0 {
+		ids = []string{st.ID}
+	}
+	return ids, nil
+}
+
+// nodeFetchConcurrency bounds parallel node log downloads.
+const nodeFetchConcurrency = 4
+
+// maxHighlights bounds the error-looking lines kept from a log.
+const maxHighlights = 10
+
+// highlightRE matches lines that usually carry the reason of a failure.
+var highlightRE = regexp.MustCompile(`(?i)(\berror\b|\bfail(ed|ure)?\b|\bfatal\b|exception|exit code [1-9]|\bdenied\b|\brefused\b|\btimed out\b|\bnot (running|found)\b)`)
+
+// nodeTail is the end of the concatenated logs of some flow nodes.
+type nodeTail struct {
+	lines      []string
+	total      int  // lines in the nodes read
+	full       bool // every node was read, so total is the whole length
+	read       int  // nodes read
+	highlights []LogMatch
+}
+
+type oneTail struct {
+	lines      []string
+	total      int
+	highlights []LogMatch
+	err        error
+}
+
+// tailNodes returns the last want lines of the logs of ids, in order. It reads
+// from the last node backwards, nodeFetchConcurrency at a time, and stops once
+// the nodes read hold want lines, so earlier steps are not downloaded. Each
+// node keeps only its own last want lines, so memory stays bounded. With hl,
+// error-looking lines are collected (line numbers count within each node).
+func (s *Service) tailNodes(ctx context.Context, path string, n int, ids []string, want int, clean cleaner, hl bool) (nodeTail, error) {
+	res := make([]oneTail, len(ids))
+	start, have := len(ids), 0
+	for start > 0 && have < want {
+		lo := max(0, start-nodeFetchConcurrency)
+		var wg sync.WaitGroup
+		for i := lo; i < start; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				res[i] = s.readNode(ctx, path, n, ids[i], want, clean, hl)
+			}(i)
+		}
+		wg.Wait()
+		for i := lo; i < start; i++ {
+			if res[i].err != nil {
+				return nodeTail{}, res[i].err
+			}
+			have += res[i].total
+		}
+		start = lo
+	}
+	out := nodeTail{full: start == 0, read: len(ids) - start, total: have}
+	var all []string
+	for _, r := range res[start:] {
+		all = append(all, r.lines...)
+		out.highlights = append(out.highlights, r.highlights...)
+	}
+	if len(all) > want {
+		all = all[len(all)-want:]
+	}
+	if len(out.highlights) > maxHighlights {
+		out.highlights = out.highlights[len(out.highlights)-maxHighlights:]
+	}
+	out.lines = all
+	return out, nil
+}
+
+func (s *Service) readNode(ctx context.Context, path string, n int, id string, want int, clean cleaner, hl bool) oneTail {
+	rc, err := s.backend.StreamNodeLog(ctx, path, n, id)
+	if err != nil {
+		return oneTail{err: err}
+	}
+	defer rc.Close()
+	t := newTail(want)
+	var hls []LogMatch
+	err = eachLine(rc, func(l string) bool {
+		l = clean.line(l)
+		t.add(l)
+		if hl && highlightRE.MatchString(l) {
+			hls = append(hls, LogMatch{Line: t.total, Text: cutLine(l, maxMatchRunes)})
+			if len(hls) > 2*maxHighlights {
+				hls = hls[len(hls)-maxHighlights:]
+			}
+		}
+		return true
+	})
+	if err != nil {
+		return oneTail{err: readErr(ctx, err)}
+	}
+	if len(hls) > maxHighlights {
+		hls = hls[len(hls)-maxHighlights:]
+	}
+	return oneTail{lines: t.lines(), total: t.total, highlights: hls}
+}
+
+// consoleInfo describes how the console tail was read.
+type consoleInfo struct {
+	source     string
+	full       bool // the whole log was read, so the line count is total
+	totalBytes int64
+	readBytes  int64
+}
+
+// maxTailWindow bounds the offset reads before falling back to the full log.
+const maxTailWindow = 32 << 20
+
+// tailConsole returns the last want lines of the console. With a known size it
+// reads from an offset near the end (dropping the first, partial line) and
+// widens the window until it has enough lines; otherwise, or when Jenkins
+// does not support offsets, it streams consoleText from the start.
+func (s *Service) tailConsole(ctx context.Context, path string, n, want int, clean cleaner) (*tailBuf, consoleInfo, error) {
+	if size, err := s.backend.ConsoleSize(ctx, path, n); err == nil && size > 0 {
+		window := max(int64(64<<10), int64(want)*512)
+		for window <= maxTailWindow {
+			start := max(0, size-window)
+			rc, err := s.backend.StreamConsoleFrom(ctx, path, n, start)
+			if err != nil {
+				break
+			}
+			t := newTail(want)
+			skip := start > 0
+			err = eachLine(rc, func(l string) bool {
+				if skip {
+					skip = false
+					return true
+				}
+				t.add(clean.line(l))
+				return true
+			})
+			rc.Close()
+			if err != nil {
+				return nil, consoleInfo{}, readErr(ctx, err)
+			}
+			if start == 0 || t.total >= want {
+				return t, consoleInfo{source: "progressiveText", full: start == 0, totalBytes: size, readBytes: size - start}, nil
+			}
+			window *= 4
 		}
 	}
-	return Stage{}, false
+	rc, err := s.backend.StreamConsole(ctx, path, n)
+	if err != nil {
+		return nil, consoleInfo{}, err
+	}
+	defer rc.Close()
+	t := newTail(want)
+	if err := eachLine(rc, func(l string) bool { t.add(clean.line(l)); return true }); err != nil {
+		return nil, consoleInfo{}, readErr(ctx, err)
+	}
+	return t, consoleInfo{source: "consoleText", full: true}, nil
 }
 
 // LogSearch scans the console log line by line and stops as soon as
@@ -170,7 +362,8 @@ func (s *Service) LogSearch(ctx context.Context, in LogSearchIn) (LogSearchOut, 
 	defer rc.Close()
 
 	sc := newSearch(re, ctxN, maxMatches, s.policy.MaxLogLines())
-	if err := eachLine(rc, sc.line); err != nil {
+	clean := newCleaner(in.Raw)
+	if err := eachLine(rc, func(l string) bool { return sc.line(clean.line(l)) }); err != nil {
 		return LogSearchOut{}, readErr(ctx, err)
 	}
 	out := LogSearchOut{
@@ -186,7 +379,7 @@ func (s *Service) LogSearch(ctx context.Context, in LogSearchIn) (LogSearchOut, 
 		if err != nil {
 			return LogSearchOut{}, err
 		}
-		out.SpilledTo = p
+		out.SpilledTo, out.SpilledURI = p, output.SpillURI(p)
 		for i := range out.Matches {
 			out.Matches[i].Before, out.Matches[i].After = nil, nil
 			out.Matches[i].Text = cutLine(out.Matches[i].Text, 200)

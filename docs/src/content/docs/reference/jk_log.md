@@ -31,5 +31,5 @@ jk log [flags]
 
 * [jk](/jk/reference/jk/)	 - Agent-first Jenkins CLI and MCP server
 * [jk log search](/jk/reference/jk_log_search/)	 - Grep a build log by regex without downloading it; returns matching lines with line numbers and context.
-* [jk log tail](/jk/reference/jk_log_tail/)	 - Read the end of a build log (whole console or one stage); returns the last N lines, capped by policy.
+* [jk log tail](/jk/reference/jk_log_tail/)	 - Read the end of a build log: whole console, one stage, or only the failing step (step=failed); returns the last N lines, capped by policy, with ANSI and timestamps stripped.
 
