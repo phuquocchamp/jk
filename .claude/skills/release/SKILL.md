@@ -80,7 +80,7 @@ curl -fsSL https://raw.githubusercontent.com/phuquocchamp/jk/main/install.sh | s
 "$dir/jk" version
 gh release download vX.Y.Z --pattern 'jk_*_darwin_arm64.tar.gz' --dir "$dir"
 gh attestation verify "$dir"/jk_*_darwin_arm64.tar.gz -R phuquocchamp/jk
-GOFLAGS=-mod=mod go install github.com/phuquocchamp/jk/cmd/jk@vX.Y.Z   # optional
+go install github.com/phuquocchamp/jk/cmd/jk@vX.Y.Z   # optional
 ```
 
 The `install` job of the release workflow must be green too.
