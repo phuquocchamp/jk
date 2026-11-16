@@ -9,14 +9,18 @@ jk will run. The default is **read only**.
 
 | tier | allows |
 |---|---|
-| `read` (default) | `whoami`, `job_list`, `job_get`, `build_get`, `build_stages`, `build_log`, `log_search`, `test_failed`, `queue_get` |
-| `write` | read, plus `build_trigger` and `build_replay` |
-| `danger` | write, plus `build_stop` |
+| `read` (default) | `whoami`, `job_list`, `job_get`, `build_get`, `build_diagnose`, `build_stages`, `build_replay_script`, `build_wait`, `build_log`, `log_search`, `test_failed`, `queue_get` |
+| `write` | read, plus `build_trigger` |
+| `danger` | write, plus `build_replay` (runs arbitrary pipeline code) and `build_stop`; both need confirmation |
 
 - **Tighten-only.** `--tier` (CLI and `jk mcp --tier`) can only lower the
   tier set in the config. Asking for more is `POLICY_DENIED`. The `JENKINS_*`
   variables cannot raise it either.
 - **In MCP**, tools above the effective tier are not registered at all.
+- **Danger operations need a human.** `build_replay` and `build_stop` need
+  `--yes` / `confirm: true`. In MCP clients that support elicitation the user is
+  asked instead, and the agent's `confirm: true` is not enough (see
+  [MCP server](/jk/mcp/#confirmations-progress-and-large-results)).
 
 :::danger[The tier is not a sandbox]
 An agent that can run shell commands can point `XDG_CONFIG_HOME` at a

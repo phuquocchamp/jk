@@ -50,6 +50,27 @@ The tools show up as `mcp__jk__jenkins_*` (for example
 `"mcp__jk__jenkins_build_log"` to `permissions.allow` in `settings.json`, or
 `"mcp__jk__*"` to allow every tool the tier permits.
 
+## Confirmations, progress and large results
+
+- **The user approves danger operations, not the agent.** When the client
+  supports elicitation, `build_stop` and `build_replay` ask the user directly
+  (for replay with the diff against the original script), even if the agent
+  passed `confirm: true`. A decline returns `POLICY_DENIED` ("the user
+  declined"); the agent should not retry. On protocol 2026-07-28 the question
+  is returned as an input request (multi round-trip requests); older clients
+  get `elicitation/create`. An answer only counts for the exact plan it was
+  given for: if `last` now names a newer build, the user is asked again.
+  Clients without elicitation keep the `confirm: true` flow.
+- **Progress.** `build_wait` and `build_trigger` with `wait` send progress
+  notifications (queue reason, then "build #N running") when the call has a
+  progress token. Both stop after 45 seconds and return `timed_out: true` with
+  `next`, the `build_wait` call to continue with.
+- **Large results.** Logs, search results and scripts over 64 KB are written to
+  a local file (`spilled_to`) and also served as the MCP resource in
+  `spilled_uri` (`jk://spill/<name>`), so clients that cannot read local files
+  can fetch them with `resources/read`. Only files written by the running
+  server are served.
+
 ## Desktop apps
 
 Claude Desktop, Cursor and similar apps do not read your shell's `PATH`. Use

@@ -22,7 +22,7 @@ import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
 go install github.com/phuquocchamp/jk/cmd/jk@latest
 export JENKINS_URL=https://jenkins.example.com JENKINS_USER=jane
 printf %s "$TOKEN" | jk auth login --with-token
-jk build stages team-a/api/main lastFailed
+jk build diagnose team-a/api/main     # why did the last failed build fail?
 ```
 
 ## Why jk
@@ -33,16 +33,18 @@ jk build stages team-a/api/main lastFailed
     `{"error":{"code","message","hint","retryable"}}` with stable exit codes.
   </Card>
   <Card title="CLI and MCP in one binary" icon="puzzle">
-    `jk mcp` serves the same 12 operations as MCP tools over stdio, for Claude
+    `jk mcp` serves the same 15 operations as MCP tools over stdio, for Claude
     Code and any other MCP client.
   </Card>
   <Card title="Policy you control" icon="approve-check">
-    Read only by default. A config profile can allow triggers and replays, or
-    stopping builds, scoped by job globs. Flags can only lower it.
+    Read only by default. A config profile can allow triggers, or replays and
+    stopping builds, scoped by job globs. Flags can only lower it. In MCP
+    clients with elicitation, the user approves replay and stop, not the agent.
   </Card>
   <Card title="No Jenkins plugin" icon="rocket">
-    Talks to the REST API with a user API token. Only the usual Pipeline
-    plugins are needed for stages, stage logs and test reports.
+    Talks to the REST API with a user API token. Uses Pipeline Graph View when
+    installed (accurate failed/skipped stages, parallel branches) and falls
+    back to `pipeline-rest-api`.
   </Card>
 </CardGrid>
 

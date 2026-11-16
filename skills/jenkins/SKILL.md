@@ -80,6 +80,17 @@ operations are available as `jenkins_*` tools with the same inputs.
 
 ## Why did the build fail?
 
+Start with one call; it usually answers the question:
+
+```sh
+jk build diagnose JOB --tier read --json          # lastFailed by default; or JOB 57
+```
+
+It returns `failure.stage`, `failure.step.name` (for `sh` steps the command),
+`failure.step.error`, the end of that step's log in `failure.log`, failed tests
+and changes. Quote the relevant log lines. Follow `next` only when the log
+excerpt does not explain the failure. The manual steps below are the fallback.
+
 ```sh
 jk job get     JOB --tier read --json --fields last_build,last_failed_build,last_successful_build
 jk build get   JOB 57 --tier read --json --fields number,result,causes,revision,changes
@@ -94,11 +105,14 @@ jk log search  JOB 57 -e 'ERROR|Exception|exit code [1-9]' -C 3 --max-matches 20
    different: the latest build may be green while the user asks about the
    failure. Pick the build number once and use it in every later command.
 2. `build get` gives the result, causes and changes for that build.
-3. `build stages` lists the stages that failed. `NOT_EXECUTED` means the stage
-   was skipped, not that it failed, so the filter leaves it out.
-4. Tail the failed stages in `start_time` order, by **id**. A failed stage with
-   `total_lines: 0` is a parent or a stage that failed because an earlier one
-   did; move to the next. The first stage with log text usually holds the error.
+3. `build stages` returns `first_failed`, the id of the stage where the build
+   first failed, and its `failed_step`. With `source: pipeline-graph-view`,
+   stages skipped after the failure are `SKIPPED`; with `source: wfapi` they
+   may also show `FAILED`, so trust `first_failed` over the status list.
+4. Read the failing step: `jk log tail JOB 57 --step failed -n 200` (the first
+   failed stage's failing step, ANSI and timestamps stripped). Use `--stage ID`
+   for the whole stage. Stages with `inherited: true` only failed because a
+   nested stage did; skip them.
 5. If there is a test report, `test failed` lists failed cases with trimmed
    error details (`has_report: false` means there is no report, not an error).
 6. Use `log search` on the whole console only when the stage logs don't explain
@@ -118,8 +132,10 @@ Quote short log lines rather than whole logs.
 | list jobs or branches | `jk job list [folder] --json --fields name,path,kind,color,total,truncated` |
 | job parameters and last builds | `jk job get JOB --json` |
 | follow a queue item | `jk queue get ID --json` |
-| trigger (write tier) | `jk build trigger JOB -p KEY=VALUE --wait --timeout 20m --json` |
-| replay with a new Jenkinsfile (write tier) | `jk build replay JOB 57 --script-file Jenkinsfile --json` |
+| trigger (write tier) | `jk build trigger JOB -p KEY=VALUE --wait --timeout 20m --json` (unknown names and bad choices are rejected) |
+| keep waiting after `timed_out` | `jk build wait JOB 58 --json` (run the `next.cli` from the output) |
+| the Jenkinsfile a build ran | `jk build script JOB 57 > Jenkinsfile` |
+| replay with a new Jenkinsfile (danger tier, needs approval) | `jk build replay JOB 57 --script-file Jenkinsfile --json`: exit 7 with a diff; show it, then `--yes` after approval |
 | stop (danger tier, needs approval) | `jk build stop JOB 57 --json`, then `--yes` after approval |
 
 ## Exit codes
@@ -134,6 +150,7 @@ Quote short log lines rather than whole logs.
 | 5 | CONFLICT | Jenkins state conflict; re-read and report |
 | 6 | AUTH_REQUIRED | the user must set `JENKINS_API_TOKEN` or run `jk auth login` |
 | 7 | NEEDS_CONFIRMATION | show `details` (the plan) and ask the user before adding `--yes` |
+| 4 | POLICY_DENIED "the user declined" | the user said no in the confirmation prompt; do not retry, ask what to change |
 
 More recipes: [references/recipes.md](references/recipes.md).
 Every command, flag and default: [references/commands.md](references/commands.md).

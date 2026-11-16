@@ -34,13 +34,16 @@ Use this when you need an exact flag name or default. For workflows, see
 | `job list` | `[folder]` | `--limit N` (50) | read | `jenkins_job_list` |
 | `job get` | `<job>` | – | read | `jenkins_job_get` |
 | `build get` | `<job> [ref]` | – | read | `jenkins_build_get` |
+| `build diagnose` | `<job> [ref]` (ref defaults to `lastFailed`) | `-n, --lines N` (60), `--max-tests N` (10) | read | `jenkins_build_diagnose` |
 | `build stages` | `<job> [ref]` | – | read | `jenkins_build_stages` |
-| `log tail` | `<job> [ref]` | `-n, --lines N` (policy `max_log_lines`), `--stage NAME\|ID` | read | `jenkins_build_log` |
-| `log search` | `<job> [ref]` | `-e, --pattern RE` (required, Go regex), `-C, --context N` (0), `--max-matches N` (50) | read | `jenkins_log_search` |
+| `build script` | `<job> [ref]` | – | read | `jenkins_build_replay_script` |
+| `build wait` | `<job> [ref]` | `--queue-id N`, `--timeout` (600s) | read | `jenkins_build_wait` |
+| `log tail` | `<job> [ref]` | `-n, --lines N` (policy `max_log_lines`), `--stage NAME\|ID`, `--step failed\|ID`, `--raw` | read | `jenkins_build_log` |
+| `log search` | `<job> [ref]` | `-e, --pattern RE` (required, Go regex), `-C, --context N` (0), `--max-matches N` (50), `--raw` | read | `jenkins_log_search` |
 | `test failed` | `<job> [ref]` | `--limit N` (50) | read | `jenkins_test_failed` |
 | `queue get` | `<id>` | – | read | `jenkins_queue_get` |
-| `build trigger` | `<job>` | `-p, --param k=v` (repeatable), `--wait`, `--timeout` (seconds or `20m`; 600s; only with `--wait`), `--dry-run` | write | `jenkins_build_trigger` |
-| `build replay` | `<job> <ref>` | `--script-file F` (required; `-` = stdin), `--dry-run` | write | `jenkins_build_replay` |
+| `build trigger` | `<job>` | `-p, --param k=v` (repeatable), `--wait`, `--timeout` (seconds or `20m`; 600s; only with `--wait`), `--allow-unknown`, `--dry-run` | write | `jenkins_build_trigger` |
+| `build replay` | `<job> <ref>` | `--script-file F` (required; `-` = stdin), `--yes` (required to act), `--dry-run` | danger | `jenkins_build_replay` |
 | `build stop` | `<job> <ref>` | `--yes` (required to act), `--dry-run` | danger | `jenkins_build_stop` |
 | `mcp` | none | global `--profile`, `--tier` | – | – |
 | `version` | none | – | – | – |
@@ -104,6 +107,6 @@ and `internal/cli/auth.go`. Keys marked `?` are left out when empty.
 
 | tier | allows |
 |---|---|
-| `read` (default) | auth status, job list/get, build get/stages, log tail/search, test failed, queue get |
-| `write` | read + build trigger, build replay |
-| `danger` | write + build stop |
+| `read` (default) | auth status, job list/get, build get/diagnose/stages/script/wait, log tail/search, test failed, queue get |
+| `write` | read + build trigger |
+| `danger` | write + build replay, build stop |
